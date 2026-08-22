@@ -64,13 +64,11 @@ public class TripService extends Service implements LocationListener, CarTelemet
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
             telemetryService.addListener(TripService.this);
-            isBound = true;
             Log.d(TAG, "TripService connecté au CANbus.");
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            isBound = false;
             telemetryService = null;
         }
     };
@@ -83,7 +81,8 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
         // Liaison avec le service de télémétrie de la voiture
         Intent intent = new Intent(this, CarTelemetryService.class);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        // On enregistre immédiatement si le système accepte la liaison
+        isBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
         // Initialisation du GPS
         try {
@@ -205,8 +204,11 @@ public class TripService extends Service implements LocationListener, CarTelemet
     public void onDestroy() {
         super.onDestroy();
         try {
-            if (isBound && telemetryService != null) {
-                telemetryService.removeListener(this);
+            // Sécurité de déconnexion globale basée sur la demande initiale
+            if (isBound) {
+                if (telemetryService != null) {
+                    telemetryService.removeListener(this);
+                }
                 unbindService(serviceConnection);
                 isBound = false;
             }
