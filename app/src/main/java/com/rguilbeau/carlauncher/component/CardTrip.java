@@ -1,7 +1,9 @@
 package com.rguilbeau.carlauncher.component;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -156,10 +158,10 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
      */
     public void reset() {
         try {
-            new android.app.AlertDialog.Builder(getContext())
+            AlertDialog dialog = new AlertDialog.Builder(getContext())
                     .setTitle("Réinitialiser le trajet ?")
                     .setMessage("Voulez-vous vraiment remettre la distance et le temps à zéro ?")
-                    .setPositiveButton("Oui", (dialog, which) -> {
+                    .setPositiveButton("Oui", (dialogInterface, which) -> {
                         if (prefs != null) {
                             prefs.edit()
                                     .putFloat(TripService.KEY_DISTANCE, 0f)
@@ -171,6 +173,10 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                     })
                     .setNegativeButton("Non", null)
                     .show();
+
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
         } catch (Exception e) {
             Log.e(TAG, "Error displaying reset confirmation dialog", e);
         }

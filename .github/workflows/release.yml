@@ -40,10 +40,23 @@ jobs:
       - name: Récupérer le message du tag
         id: tag_note
         run: |
-          # Récupère le texte complet associé au tag
+          # Force la récupération des métadonnées complètes des tags
+          git fetch --tags --force
+
+          # Extrait le message du tag annoté
           MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
-          
-          # Écriture multiligne sécurisée dans l'output de GitHub Actions
+
+          # Repli 1 : Si le tag n'a pas de message, prends le message du dernier commit
+          if [ -z "$(echo "$MSG" | tr -d '[:space:]')" ]; then
+            MSG=$(git log -1 --format='%B' ${{ github.ref_name }})
+          fi
+
+          # Repli 2 : Si c'est toujours vide, utilise le nom du tag
+          if [ -z "$(echo "$MSG" | tr -d '[:space:]')" ]; then
+            MSG="Release ${{ github.ref_name }}"
+          fi
+
+          # Écriture multiligne sécurisée
           echo "note<<EOF" >> $GITHUB_OUTPUT
           echo "$MSG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -51,7 +64,7 @@ jobs:
       - name: Création de la Release GitHub
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: CarLauncher.apk
           # On utilise le message extrait du tag comme corps de la release
           body: ${{ steps.tag_note.outputs.note }}

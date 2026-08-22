@@ -1,5 +1,6 @@
 package com.rguilbeau.carlauncher;
 
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.ImageView;
@@ -94,9 +95,11 @@ public class AppDrawerActivity extends AppCompatActivity {
                 .setView(layout)
                 .setCancelable(false)
                 .setNegativeButton("Fermer", (d, which) -> d.dismiss())
-                .create();
+                .show();
 
-        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 
         // 3. Lancement de la mise à jour
         GitHubUpdater updater = new GitHubUpdater(this, new UpdateListener() {

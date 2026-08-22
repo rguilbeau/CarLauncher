@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -221,5 +222,20 @@ public class TripService extends Service implements LocationListener, CarTelemet
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+        // OBLIGATOIRE : Laisser vide pour éviter le crash au réveil
+    }
+
+    @Override
+    public void onProviderEnabled(@NonNull String provider) {
+        // OBLIGATOIRE : Laisser vide pour éviter le crash au réveil
+    }
+
+    @Override
+    public void onProviderDisabled(@NonNull String provider) {
+        // OBLIGATOIRE : Laisser vide pour éviter le crash au réveil
     }
 }

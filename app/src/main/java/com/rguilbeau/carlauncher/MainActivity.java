@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.manager.UncaughtExceptionLoggerManager;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.TripService;
@@ -58,6 +59,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
         hideSystemUI();
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // Vérifie et affiche le dernier crash s'il y en a eu un
+        UncaughtExceptionLoggerManager.showLastCrash(this);
 
         // 2. Initialisation de l'AutoPlayManager
         autoPlayManager = new AutoPlayManager(this);

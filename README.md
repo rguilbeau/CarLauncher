@@ -96,7 +96,7 @@ Pour installer l'application sur la voiture, nous utilisons ADB via Wi-Fi. Le PC
 
 *Astuce : La méthode la plus simple et la plus fiable consiste à activer le partage de connexion (hotspot Wi-Fi) de votre smartphone, puis d'y connecter à la fois votre PC et l'autoradio.*
 
-**Sur l'autoradio, le dubbugage Wifi est en root par défaut**
+**Sur l'autoradio, le débogage Wifi est en root par défaut**
 
 **Procédure de connexion et d'installation :**
 
@@ -128,5 +128,26 @@ Pour s'assurer que l'installation en `priv-app` a fonctionné :
 2. Ouvrez le menu **Applications** (ou *Toutes les applications*).
 3. Cherchez et sélectionnez l'application **CarLauncher**.
 4. Observez le bouton **Désinstaller** :
-   - S'il est **grisé, absent, ou remplacé par "Désactiver"** : Félicitations, l'installation a réussi ! L'application fait désormais partie intégrante du système d'usine de l'autoradio.
-   - S'il est cliquable normalement (et permet de supprimer l'appli) : L'installation a échoué, l'application est installée de manière classique. Vérifiez les logs du script `install.bat` pour voir où la copie a bloqué.
+- S'il est **grisé, absent, ou remplacé par "Désactiver"** : Félicitations, l'installation a réussi ! L'application fait désormais partie intégrante du système d'usine de l'autoradio.
+- S'il est cliquable normalement (et permet de supprimer l'appli) : L'installation a échoué, l'application est installée de manière classique. Vérifiez les logs du script `install.bat` pour voir où la copie a bloqué.
+
+## Simulation et Tests ADB (Télémétrie & Veille)
+
+Il est possible de simuler les signaux du véhicule (CANbus/MCU QF01) via **ADB** afin de tester le fonctionnement du `CarTelemetryService` et du `TripService` sur émulateur sans être raccordé au véhicule.
+
+* **Activer le contact (ACC ON) :**
+
+```bash
+adb shell am broadcast -a com.qf.action.ACC_ON
+```
+
+* **Désactiver le contact (ACC OFF) :**
+```bash
+adb shell am broadcast -a com.qf.action.ACC_OFF
+```
+
+* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2000 RPM) : :**
+
+```bash
+adb shell am broadcast -a com.qf.vehicle.action.DATA_SHARE --ei speed 60 --ei rpm 2200
+```

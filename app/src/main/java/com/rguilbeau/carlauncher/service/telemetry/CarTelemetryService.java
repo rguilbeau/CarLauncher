@@ -8,7 +8,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -62,18 +64,6 @@ public class CarTelemetryService extends Service {
                 case "com.qf.action.ACC_ON":
                     isAccOn = true;
                     notifyAccChanged(true);
-
-                    // 1. FORÇAGE DU LAUNCHER AU PREMIER PLAN (Depuis le service !)
-                    try {
-                        Intent startMain = new Intent(Intent.ACTION_MAIN);
-                        startMain.addCategory(Intent.CATEGORY_HOME);
-                        // FLAG_ACTIVITY_NEW_TASK est OBLIGATOIRE quand on lance une Activity depuis un Service
-                        startMain.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        context.startActivity(startMain);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Erreur lors du forçage du bouton Home", e);
-                    }
-
                     break;
 
                 case "com.qf.action.ACC_OFF":

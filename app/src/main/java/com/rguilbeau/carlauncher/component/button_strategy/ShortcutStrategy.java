@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -38,13 +39,19 @@ import java.util.List;
  */
 public class ShortcutStrategy implements ButtonStrategy {
 
-    /** Tag d'identification utilisé pour les journaux d'erreurs (Logcat). */
+    /**
+     * Tag d'identification utilisé pour les journaux d'erreurs (Logcat).
+     */
     private static final String TAG = "ButtonShortcut";
 
-    /** Nom du fichier de préférences partagées. */
+    /**
+     * Nom du fichier de préférences partagées.
+     */
     private static final String PREFS_NAME = "CarLauncherPrefs";
 
-    /** Identifiant unique de ce raccourci, servant de clé dans les SharedPreferences. */
+    /**
+     * Identifiant unique de ce raccourci, servant de clé dans les SharedPreferences.
+     */
     private final String shortcutType;
 
     /**
@@ -132,9 +139,9 @@ public class ShortcutStrategy implements ButtonStrategy {
             };
 
             // 3. Affichage de la boîte de dialogue
-            new AlertDialog.Builder(context)
+            AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("Choisir une application")
-                    .setAdapter(adapter, (dialog, which) -> {
+                    .setAdapter(adapter, (dialogInterface, which) -> {
                         AppInfo selectedApp = appList.get(which);
 
                         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -144,6 +151,10 @@ public class ShortcutStrategy implements ButtonStrategy {
                     })
                     .setNegativeButton("Annuler", null)
                     .show();
+
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 
         } catch (Exception e) {
             Log.e(TAG, "Error while loading or displaying installed applications", e);
