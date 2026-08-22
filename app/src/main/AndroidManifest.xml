@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.rguilbeau.carlauncher"> <!-- Remplace par ton vrai nom de package -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Car Dashboard"
+        android:theme="@style/Theme.CarLauncher">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:resizeableActivity="true"
+            >
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <!-- Ces deux lignes sont indispensables pour devenir un Launcher -->
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <!-- (Optionnel) Pour qu'elle apparaisse aussi dans la liste des apps d'un autre launcher -->
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <activity android:name=".AppDrawerActivity" />
+
+        <!-- Service obligatoire pour débloquer l'accès universel à la musique -->
+        <service
+            android:name=".service.MediaNotificationService"
+            android:exported="true"
+            android:label="Car Launcher Media"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".service.TripService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <service
+            android:name=".service.telemetry.CarTelemetryService"
+            android:enabled="true"
+            android:exported="false" />
+
+    </application>
+
+    <queries>
+        <!-- 1. Permet de vérifier spécifiquement si Spotify et Maps sont installés -->
+        <package android:name="com.spotify.music" />
+        <package android:name="com.google.android.apps.maps" />
+
+        <!-- 2. Permet de lister toutes les applications lançables du système -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
+    </queries>
+</manifest>

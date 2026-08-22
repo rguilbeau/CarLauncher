@@ -1,0 +1,125 @@
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+
+    android:id="@+id/card_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:cardCornerRadius="@dimen/_15sdp"
+    app:cardBackgroundColor="@android:color/transparent"
+    android:clickable="true"
+    android:focusable="true">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- Image de fond -->
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:src="@drawable/bg_day_sun"
+            android:scaleType="fitXY" />
+
+        <!-- Contenu par-dessus -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/_15sdp"
+                    android:orientation="vertical">
+
+                    <TextClock
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:format12Hour="HH:mm"
+                        android:format24Hour="HH:mm"
+                        android:textColor="#FFFF"
+                        android:textSize="@dimen/_35sdp"
+                        android:shadowColor="#99000000"
+                        android:shadowDx="0"
+                        android:shadowDy="2"
+                        android:shadowRadius="4"
+                        android:textStyle="bold" />
+
+                    <TextClock
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:format12Hour="EEEE, d MMMM yyyy"
+                        android:format24Hour="EEEE, d MMMM yyyy"
+                        android:textColor="#E1E9FF"
+                        android:shadowColor="#99000000"
+                        android:shadowDx="0"
+                        android:shadowDy="2"
+                        android:shadowRadius="4"
+                        android:textSize="@dimen/_11sdp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:layout_marginEnd="@dimen/_15sdp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/txtWeatherIcon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="⛅"
+                            android:shadowColor="#99000000"
+                            android:shadowDx="0"
+                            android:shadowDy="2"
+                            android:shadowRadius="4"
+                            android:textSize="@dimen/_35sdp" />
+
+                        <TextView
+                            android:id="@+id/txtWeatherTemp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_10sdp"
+                            android:text="--°C"
+                            android:textColor="#FFFFFF"
+                            android:textSize="@dimen/_20sdp"
+                            android:shadowColor="#99000000"
+                            android:shadowDx="0"
+                            android:shadowDy="2"
+                            android:shadowRadius="4"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/txtCity"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:textColor="#E1E9FF"
+                        android:textSize="@dimen/_11sdp"
+                        android:shadowColor="#99000000"
+                        android:shadowDx="0"
+                        android:shadowDy="2"
+                        android:shadowRadius="4"
+                        android:text="Position inconnue"/>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+    </FrameLayout>
+
+</androidx.cardview.widget.CardView>

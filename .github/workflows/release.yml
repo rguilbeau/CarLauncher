@@ -1,0 +1,59 @@
+name: Build and Release APK
+
+# Le script se déclenche sur tous les tags
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    name: Build APK and Create Release
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Nécessaire pour lire les métadonnées complètes des tags
+
+      - name: Configuration de Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Rendre Gradle exécutable
+        run: chmod +x ./gradlew
+
+      - name: Compilation et Signature de l'APK Release
+        run: ./gradlew assembleRelease
+
+      - name: Renommer l'APK
+        run: mv app/build/outputs/apk/release/app-release.apk CarLauncher.apk
+
+      # --- ÉTAPE : Extraction du message du tag ---
+      - name: Récupérer le message du tag
+        id: tag_note
+        run: |
+          # Récupère le texte complet associé au tag
+          MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          
+          # Écriture multiligne sécurisée dans l'output de GitHub Actions
+          echo "note<<EOF" >> $GITHUB_OUTPUT
+          echo "$MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Création de la Release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          files: CarLauncher.apk
+          # On utilise le message extrait du tag comme corps de la release
+          body: ${{ steps.tag_note.outputs.note }}
+          # Passe à true si tu veux AUSSI afficher la liste automatique des commits en dessous
+          generate_release_notes: false

@@ -1,0 +1,54 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Cercle de fond -->
+    <path
+        android:fillColor="#556572"
+        android:pathData="M32,0
+            A32,32 0,1 0,32,64
+            A32,32 0,1 0,32,0" />
+
+    <!-- 9 points -->
+    <path
+        android:fillColor="#E8F4F5"
+        android:pathData="
+            M20,18
+            A4,4 0,1 0,20,26
+            A4,4 0,1 0,20,18
+
+            M32,18
+            A4,4 0,1 0,32,26
+            A4,4 0,1 0,32,18
+
+            M44,18
+            A4,4 0,1 0,44,26
+            A4,4 0,1 0,44,18
+
+            M20,30
+            A4,4 0,1 0,20,38
+            A4,4 0,1 0,20,30
+
+            M32,30
+            A4,4 0,1 0,32,38
+            A4,4 0,1 0,32,30
+
+            M44,30
+            A4,4 0,1 0,44,38
+            A4,4 0,1 0,44,30
+
+            M20,42
+            A4,4 0,1 0,20,50
+            A4,4 0,1 0,20,42
+
+            M32,42
+            A4,4 0,1 0,32,50
+            A4,4 0,1 0,32,42
+
+            M44,42
+            A4,4 0,1 0,44,50
+            A4,4 0,1 0,44,42" />
+
+</vector>

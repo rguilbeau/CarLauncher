@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Cercle de fond -->
+    <path
+        android:fillColor="#3E699E"
+        android:pathData="M32,0
+            A32,32 0,1 0,32,64
+            A32,32 0,1 0,32,0" />
+
+    <!-- Icône de navigation (flèche de direction) centrée -->
+    <group
+        android:translateX="16"
+        android:translateY="16"
+        android:scaleX="1.33"
+        android:scaleY="1.33">
+        <path
+            android:fillColor="#E8F4F5"
+            android:pathData="M12,2L4.5,20.29l0.71,0.71L12,18l6.79,3l0.71,-0.71L12,2z" />
+    </group>
+
+</vector>

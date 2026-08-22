@@ -1,0 +1,12 @@
+<resources>
+    <!-- On utilise un thème "NoActionBar" pour supprimer la fameuse bande bleue de titre -->
+    <style name="Theme.CarLauncher" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- ON TUE LE VIOLET ICI, on remplace par ton noir -->
+        <item name="colorPrimary">#040202</item>
+        <item name="colorPrimaryVariant">#000000</item>
+
+        <item name="android:statusBarColor">#040202</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
+    </style>
+</resources>
