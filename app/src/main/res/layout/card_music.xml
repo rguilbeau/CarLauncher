@@ -19,7 +19,6 @@
             android:id="@+id/imgAlbum"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:alpha="0.7"
             android:scaleType="centerCrop"
             android:src="@drawable/default_album"/>
 
