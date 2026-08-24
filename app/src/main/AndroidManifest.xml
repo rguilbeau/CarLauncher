@@ -1,49 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.rguilbeau.carlauncher"> <!-- Remplace par ton vrai nom de package -->
+    package="com.rguilbeau.carlauncher">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+
+    <!-- Permission privilégiée (priv-app) -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:ignore="ProtectedPermissions" />
+
+    <!-- Rappels importants pour le déploiement :
+    - Permissions système privilégiées (ProtectedPermissions) :
+        En cas d'ajout d'une nouvelle permission protégée (comme WRITE_SECURE_SETTINGS ou INSTALL_PACKAGES),
+        il est obligatoire de mettre à jour le fichier de privilèges système private-premissions-carlauncher.xml (privapp-permissions)
+        pour accorder explicitement ces droits au niveau de la partition système.
+
+    - Mise à jour des permissions :
+        Dès qu'une nouvelle permission est ajoutée au manifeste,
+        une réinstallation manuelle via le script install.bat est impérative afin de pousser
+        l'APK et d'appliquer correctement les droits système accordés. -->
 
     <application
         android:name=".CarLauncherApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Car Dashboard"
-        android:theme="@style/Theme.CarLauncher">
+        android:theme="@style/Theme.CarLauncher"
+        android:launchMode="singleTask"
+        android:clearTaskOnLaunch="true"
+        android:stateNotNeeded="true"
+        android:excludeFromRecents="true">
 
+        <!-- Activité principale agissant comme écran d'accueil (Home / Launcher) du système -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleInstance"
             android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true"
-            android:resizeableActivity="true"
-            >
+            android:resizeableActivity="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
-                <!-- Ces deux lignes sont indispensables pour devenir un Launcher -->
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
-
-                <!-- (Optionnel) Pour qu'elle apparaisse aussi dans la liste des apps d'un autre launcher -->
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
         </activity>
 
+        <!-- Activité affichant le tiroir d'applications (grille de toutes les applications installées) -->
         <activity android:name=".AppDrawerActivity" />
 
-        <!-- Service obligatoire pour débloquer l'accès universel à la musique -->
+        <!-- Service d'écoute des notifications système : intercepte les contrôles média (Spotify, etc.) et les données Google Maps -->
         <service
-            android:name=".service.MediaNotificationService"
+            android:name=".service.NotificationService"
             android:exported="true"
             android:label="Car Launcher Media"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -52,11 +66,13 @@
             </intent-filter>
         </service>
 
+        <!-- Service d'arrière-plan enregistrant les statistiques de trajet (distance, durée) -->
         <service
             android:name=".service.TripService"
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Service d'arrière-plan communiquant avec le bus CAN du véhicule pour la vitesse, les RPM et le contact (ACC) -->
         <service
             android:name=".service.telemetry.CarTelemetryService"
             android:enabled="true"
@@ -64,19 +80,22 @@
 
     </application>
 
+    <!-- Déclarations de visibilité des paquets pour Android 11+ (Package Visibility / Package Filtering) -->
     <queries>
-        <!-- 1. Permet de vérifier spécifiquement si Spotify et Maps sont installés -->
+        <!-- Vérification de l'existence spécifique de Spotify et Google Maps -->
         <package android:name="com.spotify.music" />
         <package android:name="com.google.android.apps.maps" />
 
-        <!-- 2. Permet de lister toutes les applications lançables du système -->
+        <!-- Permet la découverte et le listing de toutes les applications lançables sur le système -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
 
+        <!-- Permet la découverte des services de lecture multimédia compatibles -->
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
     </queries>
+
 </manifest>

@@ -23,10 +23,9 @@ import java.util.Locale;
 /**
  * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
  * <p>
- * Ce composant assure l'affichage des données de statistiques de trajet (distance parcourue et temps de conduite)
- * pour une application de type Car Launcher.
+ * Ce composant assure l'affichage des données de statistiques de trajet (distance parcourue et temps de conduite).
  * Il observe de manière dynamique les modifications apportées aux {@link SharedPreferences} afin de mettre à jour
- * l'affichage en temps réel.
+ * l'affichage en temps réel et permet une réinitialisation manuelle via un clic sur la carte.
  * </p>
  *
  * @author rguilbeau
@@ -50,12 +49,13 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
     private final TextView txtTripTime;
 
     /**
-     * Instance des préférences partagées utilisée pour lire les données du trajet.
+     * Instance des préférences partagées utilisée pour lire et modifier les données du trajet.
      */
     private final SharedPreferences prefs;
 
     /**
      * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier de layout XML.
+     * Inflate la vue, relie les composants graphiques et attache l'écouteur de clic pour le reset.
      *
      * @param context Le contexte Android associé à l'environnement d'exécution.
      * @param attrs   Ensemble d'attributs XML passés au composant lors de son gonflage.
@@ -63,19 +63,14 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
     public CardTrip(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
 
-        // Inflation du layout interne associé au composant
         LayoutInflater.from(context).inflate(R.layout.card_trip, this, true);
 
-        // Liaison des vues internes par leurs identifiants
         txtTripDistance = findViewById(R.id.txtTripDistance);
         txtTripTime = findViewById(R.id.txtTripTime);
 
-        // Initialisation du gestionnaire de préférences
         prefs = context.getSharedPreferences(TripService.PREFS_NAME, Context.MODE_PRIVATE);
 
-        // Écouteur de clic pour déclencher la réinitialisation des métriques
-        // Attachement des écouteurs d'événements uniquement si la stratégie a bien été définie
-        // On attache le clic sur button_root pour déclencher l'effet visuel (foreground)
+        // Attachement de l'écouteur de clic sur la vue racine pour proposer la réinitialisation
         View root = findViewById(R.id.card_root);
         if (root != null) {
             root.setOnClickListener(v -> reset());
@@ -124,6 +119,7 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
             long minutes = (totalDriveTime / (1000 * 60)) % 60;
             long hours = (totalDriveTime / (1000 * 60 * 60));
 
+            // Formatage du temps de conduite en heure/minute
             String timeFormatted;
             if (hours > 0) {
                 timeFormatted = String.format(Locale.FRANCE, "%dh%02d", hours, minutes);
@@ -131,19 +127,17 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                 timeFormatted = String.format(Locale.FRANCE, "%d min", minutes);
             }
 
-            // --- NOUVELLE LOGIQUE D'AFFICHAGE DE LA DISTANCE ---
+            // Formatage de la distance selon la valeur (1 décimale sous 1 km, sans décimale au-delà)
             String distanceFormatted;
             if (distanceKm >= 0.1f && distanceKm < 0.9f) {
-                // En dessous de 1 km : on affiche 1 chiffre après la virgule (ex: 0,8)
                 distanceFormatted = String.format(Locale.FRANCE, "%.1f", distanceKm);
             } else {
-                // À partir de 1 km : on n'affiche plus de virgule (ex: 1, 2, 15)
                 distanceFormatted = String.format(Locale.FRANCE, "%.0f", distanceKm);
             }
 
             post(() -> {
                 if (txtTripDistance != null && txtTripTime != null) {
-                    txtTripDistance.setText(distanceFormatted); // Utilisation de la variable formatée
+                    txtTripDistance.setText(distanceFormatted);
                     txtTripTime.setText(timeFormatted);
                 }
             });
@@ -184,7 +178,7 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est détachée de sa fenêtre parent.
-     * Désenregistre l'écouteur de préférences afin d'éviter les fuites de mémoire (Memory Leaks).
+     * Désenregistre l'écouteur de préférences afin d'éviter les fuites de mémoire.
      */
     @Override
     protected void onDetachedFromWindow() {

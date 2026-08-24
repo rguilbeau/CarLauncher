@@ -2,6 +2,91 @@
 
 ![Aperçu de CarLauncher](docs/preview.png)
 
+## Architecture
+```mermaid
+graph TD
+    subgraph SOURCING ["1. Entrées & Capteurs"]
+        CAN["Information véhicule<br/>(Broadcast com.qf.action.xx)"]
+        GPS["Position GPS<br/>(API Android Location)"]
+        ANDROID["Notifications Android<br/>(Média & Maps)"]
+    end
+
+    subgraph SERVICES ["2. Services d'Arrière-Plan"]
+        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact)"]
+        SERVICE_TRIP["Service Trajet<br/>(Distance, Chrono)"]
+        SERVICE_NOTIF["Service Notification<br/>(Musique, Navigation Maps)"]
+    end
+
+    subgraph DASHBOARD ["3. Activité Principale"]
+        MAIN["MainActivity"]
+    end
+
+    subgraph CARDS ["4. Cartes & Widgets UI"]
+        CARD_SPEED["CardSpeed<br/>(Vitesse & RPM)"]
+        CARD_TRIP["CardTrip<br/>(Distance & Temps)"]
+        CARD_MUSIC["CardMusic<br/>(Lecteur audio)"]
+        CARD_MAPS["CardMaps<br/>(Guidage GPS)"]
+        CARD_WEATHER["CardWeather<br/>(Météo & Ville)"]
+        CARD_BUTTON["CardButton<br/>(Bouton Configurable)"]
+    end
+
+    subgraph STRATEGY ["5. Stratégies de Bouton"]
+        STRAT_DRAWER["AppDrawerStrategy<br/>(Ouvre le tiroir d'apps)"]
+        STRAT_DAYNIGHT["DayNightStrategy<br/>(Bascule luminosité Min/Max)"]
+        STRAT_SHORTCUT["ShortcutStrategy<br/>(Lanceur d'app configurée)"]
+    end
+
+    %% Connexions Entrées -> Services
+    CAN --> SERVICE_CAN
+    GPS --> SERVICE_TRIP
+    ANDROID --> SERVICE_NOTIF
+
+    %% Connexions Services -> Cartes
+    SERVICE_CAN --> CARD_SPEED
+    SERVICE_CAN --> SERVICE_TRIP
+    SERVICE_TRIP --> CARD_TRIP
+    SERVICE_NOTIF --> CARD_MUSIC
+    SERVICE_NOTIF --> CARD_MAPS
+
+    %% Conteneur principal
+    MAIN --> CARDS
+
+    %% Connexion CardButton aux Stratégies
+    CARD_BUTTON --> STRAT_DRAWER
+    CARD_BUTTON --> STRAT_DAYNIGHT
+    CARD_BUTTON --> STRAT_SHORTCUT
+
+    %% Personnalisation des couleurs des blocs
+    style CARDS fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style STRATEGY fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+```
+
+Ce schéma résume le fonctionnement global du Car Launcher, structuré en couches indépendantes pour garantir modularité et réactivité.
+
+En amont, les **services d'arrière-plan** interceptent les événements système et réseau (trame CANbus du véhicule, coordonnées GPS, notifications) pour les traiter en tâche de fond. Les **cartes UI** s'abonnent directement à ces services et mettent à jour leurs affichages de manière autonome (vitesse, trajet, lecteur multimédia, navigation et météo).
+
+L'interactivité repose sur le **Design Pattern Strategy** : la carte bouton (`CardButton`) délègue son comportement à la stratégie configurée (`AppDrawerStrategy`, `DayNightStrategy` ou `ShortcutStrategy`). Cela permet d'ajouter ou de modifier des fonctionnalités de boutons sans toucher au code de l'interface graphique.
+
+## Extraction Matérielle (`hardware_dump`)
+
+Le dossier `hardware_dump`, situé à la racine du projet, contient les fichiers systèmes et les applications d'origine extraits directement de l'autoradio physique.
+
+Ces fichiers servent de base de référence pour le *reverse-engineering* du système d'usine (MCU QF01) :
+
+**Configurations et informations système :**
+* `build.prop` et `syste_properties.txt` : Contiennent la configuration matérielle, les limites de l'OS et confirment la véritable version d'Android.
+* `display_info.txt` : Détaille les caractéristiques de l'écran (résolution réelle, DPI, gestion de l'affichage).
+* `package_list.txt` : Liste complète des applications et services installés sur l'appareil.
+* `su_check.txt` : Rapport d'informations sur l'état du root (super user)
+
+**Applications et frameworks (pour décompilation) :**
+* `framework.apk` : Le cœur du système Android modifié par le constructeur. Utile pour analyser les comportements non standards (comme les restrictions du gestionnaire de fenêtres).
+* `com.qf.vehicule.apk` : Gère la communication directe avec le boîtier CANbus (permet de retrouver les actions pour la vitesse, le régime moteur, le contact).
+* `com.qf.carsettings.apk` : Application des paramètres natifs du véhicule.
+* `com.qf.commonfunc.apk` : Regroupe les fonctions communes et les services en arrière-plan du constructeur (gestion des commandes au volant, radio, etc.).
+
+> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés, indispensables pour intégrer la télémétrie dans le Launcher.
+
 ## Compilation (Release)
 
 Pour que le système de mise à jour automatique via GitHub (Self-Update) fonctionne sur l'autoradio, chaque nouvelle version doit obligatoirement être signée avec la même clé cryptographique que la version initiale installée en `priv-app`.
@@ -62,14 +147,13 @@ Sous Android 10 (API 29), ce fichier est obligatoire pour éviter que le systèm
 
 #### Configuration de l'émulateur (AVD)
 
-Pour développer et tester l'application sur PC dans des conditions équivalentes à l'autoradio cible :
+Pour développer et tester l'application sur PC dans des conditions stables :
 
 * **Écran :** 9" — 1024 × 600 (120 dpi)
-* **Version Android :** API 29 « Q » (Android 10)
-* **Image système :** Google APIs Intel x86_64 Atom System Image
+* **Version Android :** API 33 (Android 13)
+* **Image système :** Google APIs Intel x86_64 (ou arm64) System Image
 
-> **Note sur le système :** Bien que l'autoradio soit vendu sous la mention « Android 13 » (et l'affiche dans son interface d'origine), l'extraction des propriétés système (`build.prop`) confirme qu'il s'agit d'un **Android 10 (API 29)** maquillé par le constructeur. L'environnement de test sur émulateur doit donc strictement cibler l'API 29.
-
+> **Note sur le système et l'émulateur :** Bien que l'autoradio physique soit vendu sous la mention « Android 13 », l'extraction de ses propriétés système (`build.prop`) confirme qu'il s'agit en réalité d'un **Android 10 (API 29)** maquillé par le constructeur. Cependant, les images système d'Android 10 sur émulateur présentant trop d'instabilités matérielles et de bugs bloquants (notamment des crashs de mémoire avec Google Maps), l'environnement de développement sur PC est configuré sous **Android 13 (API 33)** pour garantir un confort de travail optimal.
 #### Déverrouillage de l'émulateur
 
 Pour tester l'application dans les mêmes conditions (en tant que `priv-app`) sur PC, il faut injecter l'APK directement dans le système de l'émulateur Android Studio.
@@ -90,7 +174,7 @@ Dans un autre terminal, désactiver les sécurités de vérification et redémar
 
 ```bash
 adb root
-adb shell avbctl disable-verification
+adb disable verity
 adb reboot
 ```
 

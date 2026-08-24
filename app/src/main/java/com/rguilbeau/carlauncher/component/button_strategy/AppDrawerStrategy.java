@@ -20,10 +20,14 @@ import com.rguilbeau.carlauncher.AppDrawerActivity;
  */
 public class AppDrawerStrategy implements ButtonStrategy {
 
-    /** Tag d'identification utilisé pour les journaux d'erreurs (Logcat). */
+    /**
+     * Tag d'identification utilisé pour les journaux d'erreurs (Logcat).
+     */
     private static final String TAG = "ButtonAppDrawer";
 
-    /** Type d'identification du bouton AppDrawer" */
+    /**
+     * Type d'identification du bouton AppDrawer"
+     */
     public static final String TYPE = "app_drawer";
 
     /**

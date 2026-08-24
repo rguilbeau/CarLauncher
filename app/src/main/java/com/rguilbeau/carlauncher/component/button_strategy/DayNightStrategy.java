@@ -8,10 +8,10 @@ import android.util.Log;
 import android.widget.Toast;
 
 /**
- * Stratégie de comportement pour un bouton permettant de basculer la luminosité du système (Min / Max).
+ * Stratégie de comportement pour un bouton permettant de basculer la luminosité du système entre le niveau minimal et maximal.
  * <p>
  * Nécessite la permission système WRITE_SETTINGS. Si elle n'est pas accordée,
- * le premier clic redirigera l'utilisateur vers la page de configuration pour l'autoriser.
+ * le premier clic redirigera l'utilisateur vers la page de configuration dédiée.
  * </p>
  *
  * @author rguilbeau
@@ -19,19 +19,36 @@ import android.widget.Toast;
  */
 public class DayNightStrategy implements ButtonStrategy {
 
-    /** Type d'identification du bouton DayNight" */
+    /**
+     * Identifiant unique du type de stratégie pour le bouton Jour/Nuit.
+     */
     public static final String TYPE = "day_night";
+
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "BrightnessStrategy";
 
-    // Valeurs de luminosité (sur une échelle de 0 à 255)
-    // On évite 0 pour le minimum pour ne pas rendre l'écran complètement noir et inutilisable
+    /**
+     * Valeur de luminosité minimale appliquée (échelle 0 à 255).
+     */
     private static final int BRIGHTNESS_MIN = 0;
+
+    /**
+     * Valeur de luminosité maximale appliquée (échelle 0 à 255).
+     */
     private static final int BRIGHTNESS_MAX = 255;
 
+    /**
+     * Gère le clic simple sur le bouton.
+     * Vérifie la permission de modification des paramètres, passe la luminosité en mode manuel,
+     * puis bascule entre le niveau minimal et maximal selon la valeur actuelle.
+     *
+     * @param context Le contexte Android utilisé pour accéder aux paramètres et afficher des messages Toast.
+     */
     @Override
     public void onClick(Context context) {
         try {
-            // 1. Vérification de la permission de modification des paramètres système
             if (!Settings.System.canWrite(context)) {
                 Toast.makeText(context, "Veuillez autoriser la modification des paramètres pour gérer la luminosité.", Toast.LENGTH_LONG).show();
 
@@ -42,18 +59,14 @@ public class DayNightStrategy implements ButtonStrategy {
                 return;
             }
 
-            // 2. Désactivation de la luminosité automatique (sinon notre réglage sera écrasé)
             Settings.System.putInt(context.getContentResolver(),
                     Settings.System.SCREEN_BRIGHTNESS_MODE,
                     Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
 
-            // 3. Récupération de la luminosité actuelle (par défaut 127 si introuvable)
             int currentBrightness = Settings.System.getInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, 127);
 
-            // 4. Logique de bascule (Toggle) : si on est à plus de la moitié, on passe au min, sinon au max
             int newBrightness = (currentBrightness > 127) ? BRIGHTNESS_MIN : BRIGHTNESS_MAX;
 
-            // 5. Application de la nouvelle luminosité
             Settings.System.putInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, newBrightness);
 
         } catch (Exception e) {
@@ -61,10 +74,15 @@ public class DayNightStrategy implements ButtonStrategy {
         }
     }
 
+    /**
+     * Gère le clic long sur le bouton.
+     * Consomme l'événement sans effectuer d'action afin d'éviter le déclenchement intempestif du clic simple.
+     *
+     * @param context Le contexte Android.
+     * @return true pour indiquer que l'événement a été entièrement consommé.
+     */
     @Override
     public boolean onLongClick(Context context) {
-        // Le clic long ne fait rien, mais on retourne true pour dire que l'événement est consommé
-        // (ça évite de déclencher un clic simple par erreur)
         return true;
     }
 }

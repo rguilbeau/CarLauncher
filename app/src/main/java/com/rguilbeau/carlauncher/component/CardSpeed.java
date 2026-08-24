@@ -9,8 +9,8 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.widget.FrameLayout;
-import android.widget.TextView;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -22,7 +22,7 @@ import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 /**
  * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
  * <p>
- * Ce composant affiche la vitesse instantanée du véhicule en km/h.
+ * Ce composant affiche la vitesse instantanée du véhicule en km/h ainsi que le régime moteur (RPM).
  * Il s'abonne de manière autonome au {@link CarTelemetryService} pour lire les
  * trames CANbus en temps réel lorsque la vue est affichée.
  * </p>
@@ -38,11 +38,12 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     private static final String TAG = "CardSpeed";
 
     /**
-     * Composant visuel affichant la vitesse en km/h.
+     * Composant visuel affichant la vitesse instantanée du véhicule en km/h.
      */
     private final TextView txtSpeed;
+
     /**
-     * Composant visuel affichant les rpm
+     * Barre de progression affichant visuellement le régime moteur (RPM).
      */
     private final ProgressBar progressRpm;
 
@@ -52,19 +53,18 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     private CarTelemetryService telemetryService;
 
     /**
-     * État de la connexion au service.
+     * Indicateur d'état précisant si la vue est actuellement connectée (bind) au service de télémétrie.
      */
     private boolean isBound = false;
 
     /**
-     * Gestionnaire de connexion entre la vue et le service.
+     * Gestionnaire de connexion entre la vue et le service de télémétrie.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            // Abonnement aux événements du véhicule
             telemetryService.addListener(CardSpeed.this);
             isBound = true;
             Log.d(TAG, "Connected to CarTelemetryService");
@@ -80,6 +80,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
 
     /**
      * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier de layout XML.
+     * Inflate le layout interne et relie les composants graphiques.
      *
      * @param context Le contexte Android associé à l'environnement d'exécution.
      * @param attrs   Ensemble d'attributs XML passés au composant lors de son gonflage.
@@ -87,14 +88,12 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     public CardSpeed(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
 
-        // Inflation du layout interne associé au composant
         LayoutInflater.from(context).inflate(R.layout.card_speed, this, true);
 
-        // Liaison de la vue interne
         txtSpeed = findViewById(R.id.txtSpeed);
         progressRpm = findViewById(R.id.progressRpm);
 
-        if(isBound) {
+        if (isBound) {
             txtSpeed.setText(String.valueOf(telemetryService.getCurrentSpeed()));
             progressRpm.setProgress(Math.min(telemetryService.getCurrentRpm(), 6500), true);
         }
@@ -102,14 +101,13 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est rattachée à une fenêtre active.
-     * Se connecte au service CANbus pour écouter la vitesse.
+     * Se connecte au service de télémétrie pour écouter les trames en temps réel.
      */
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         try {
             Intent intent = new Intent(getContext(), CarTelemetryService.class);
-            // On se lie au service sans le démarrer de force (le launcher principal devrait déjà l'avoir démarré)
             getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
         } catch (Exception e) {
             Log.e(TAG, "Erreur lors de la liaison au CarTelemetryService", e);
@@ -139,23 +137,29 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
         }
     }
 
-    // --- Implémentation de CarEventListener ---
-
+    /**
+     * Déclenchée lors d'un changement d'état du contact du véhicule.
+     *
+     * @param isAccOn true si le contact est mis, false sinon.
+     */
     @Override
     public void onAccStateChanged(boolean isAccOn) {
     }
 
+    /**
+     * Reçoit les nouvelles valeurs de télémétrie et met à jour l'affichage sur le thread principal.
+     *
+     * @param speed La vitesse instantanée du véhicule en km/h.
+     * @param rpm   Le régime moteur en tr/min.
+     */
     @Override
     public void onTelemetryUpdated(int speed, int rpm) {
-        // Utilisation de post() pour s'assurer que la modification UI a lieu sur le Thread Principal (Main Thread)
         post(() -> {
             if (txtSpeed != null) {
-                // On affiche directement la vitesse exacte fournie par le CANbus de la voiture
                 txtSpeed.setText(String.valueOf(speed));
             }
 
             if (progressRpm != null) {
-                // Plafonnement à 6000 au cas où la valeur dépasse légèrement
                 progressRpm.setProgress(Math.min(rpm, 6500), true);
             }
         });

@@ -30,12 +30,12 @@ import androidx.core.content.ContextCompat;
 public class PermissionManager {
 
     /**
-     * Tag d'identification utilisé pour les journaux d'erreurs et de débogage (Logcat).
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
      */
     private static final String TAG = "PermissionManager";
 
     /**
-     * Code de requête unique interne au gestionnaire pour la localisation.
+     * Code de requête unique interne utilisé pour identifier la demande de permission liée à la localisation (GPS).
      */
     private static final int LOCATION_PERMISSION_CODE = 100;
 

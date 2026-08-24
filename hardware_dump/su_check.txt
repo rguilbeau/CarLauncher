@@ -1,0 +1,2 @@
+ls: /system/bin/su: No such file or directory
+ls: /system/xbin/su: No such file or directory

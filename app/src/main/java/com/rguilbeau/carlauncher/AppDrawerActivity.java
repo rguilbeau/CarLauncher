@@ -26,42 +26,40 @@ import java.util.List;
  * Activité chargée d'afficher la grille complète des applications installées sur le système (App Drawer).
  *
  * @author rguilbeau
- * @version 1.3
  */
 public class AppDrawerActivity extends AppCompatActivity {
-
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "AppDrawerActivity";
 
+    /**
+     * Initialise l'interface de la grille d'applications.
+     * Configure les actions des boutons de retour et de mise à jour,
+     * et charge la liste des applications installées dans le RecyclerView.
+     *
+     * @param savedInstanceState L'état précédemment sauvegardé de l'activité, si existant.
+     */
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_app_drawer);
 
         try {
-            // 1. Gestion du bouton retour
             ImageView btnBack = findViewById(R.id.btnBack);
             if (btnBack != null) {
-                // finish() ferme l'activité en cours et ramène l'utilisateur sur le Launcher
                 btnBack.setOnClickListener(v -> finish());
             }
 
-            // 2. Gestion du bouton de mise à jour (Via GitHubUpdater)
             ImageView btnUpdate = findViewById(R.id.btnUpdate);
             if (btnUpdate != null) {
                 btnUpdate.setOnClickListener(v -> showUpdateDialog());
             }
 
-            // 3. Configuration de la grille des applications
             RecyclerView rvApps = findViewById(R.id.rvApps);
-
-            // Création d'une grille avec 5 colonnes (idéal pour un écran horizontal)
             if (rvApps != null) {
                 rvApps.setLayoutManager(new GridLayoutManager(this, 5));
-
-                // Récupération de la liste mutualisée via le Provider
                 List<AppInfo> installedApps = AppProvider.getApps(this);
-
-                // Liaison à l'adaptateur
                 AppDrawerAdapter adapter = new AppDrawerAdapter(this, installedApps);
                 rvApps.setAdapter(adapter);
             }
@@ -71,8 +69,11 @@ public class AppDrawerActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Affiche une boîte de dialogue pour suivre la progression de la mise à jour système via GitHub.
+     * Construit l'interface programmatiquement et écoute les événements de téléchargement.
+     */
     private void showUpdateDialog() {
-        // 1. Création de l'interface du popup en Java
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         int padding = 50;
@@ -89,7 +90,6 @@ public class AppDrawerActivity extends AppCompatActivity {
         progressBar.setIndeterminate(true);
         layout.addView(progressBar);
 
-        // 2. Création et affichage de la boîte de dialogue
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Mise à jour système")
                 .setView(layout)
@@ -101,13 +101,25 @@ public class AppDrawerActivity extends AppCompatActivity {
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 
-        // 3. Lancement de la mise à jour
         GitHubUpdater updater = new GitHubUpdater(this, new UpdateListener() {
+
+            /**
+             * Appelée lorsque le statut de l'opération change (ex: recherche d'une nouvelle version, début du téléchargement).
+             * Met à jour le texte principal de la boîte de dialogue.
+             *
+             * @param status Le message de statut actuel.
+             */
             @Override
             public void onStatusUpdate(String status) {
                 statusText.setText(status);
             }
 
+            /**
+             * Appelée régulièrement pendant le téléchargement du fichier de mise à jour.
+             * Fait passer la barre de progression en mode déterminé (si besoin) et affiche le pourcentage d'avancement.
+             *
+             * @param progress Le pourcentage de progression (de 0 à 100).
+             */
             @Override
             public void onProgress(int progress) {
                 if (progressBar.isIndeterminate()) {
@@ -117,6 +129,12 @@ public class AppDrawerActivity extends AppCompatActivity {
                 statusText.setText("Téléchargement : " + progress + "%");
             }
 
+            /**
+             * Appelée en cas d'échec (problème réseau, fichier introuvable, erreur d'écriture).
+             * Affiche le message d'erreur en rouge, masque la barre de progression et permet à l'utilisateur de fermer la fenêtre.
+             *
+             * @param error Le message décrivant l'erreur.
+             */
             @Override
             public void onError(String error) {
                 statusText.setText("Erreur : " + error);
@@ -125,11 +143,15 @@ public class AppDrawerActivity extends AppCompatActivity {
                 dialog.setCancelable(true);
             }
 
+            /**
+             * Appelée lorsque le téléchargement est terminé et que la mise à jour est prête.
+             * Affiche un message de succès, remplit la jauge à 100% et déverrouille la fermeture de la fenêtre.
+             */
             @Override
             public void onSuccess() {
                 statusText.setText("Mise à jour installée !");
                 progressBar.setProgress(100);
-                dialog.setCancelable(true); // Autorise la fermeture du popup
+                dialog.setCancelable(true);
             }
         });
 

@@ -31,7 +31,7 @@ import java.util.List;
  *     <li><b>Clic simple :</b> Tente de récupérer et lancer le package de l'application mémorisée.</li>
  *     <li><b>Appui long :</b> Ouvre une liste avec icônes permettant d'assigner une application.</li>
  * </ul>
- * La récupération des applications est désormais déléguée à {@link AppProvider}.
+ * La récupération des applications est déléguée à {@link AppProvider}.
  * </p>
  *
  * @author rguilbeau
@@ -40,7 +40,7 @@ import java.util.List;
 public class ShortcutStrategy implements ButtonStrategy {
 
     /**
-     * Tag d'identification utilisé pour les journaux d'erreurs (Logcat).
+     * Tag d'identification utilisé pour les journaux d'erreurs et de débogage (Logcat).
      */
     private static final String TAG = "ButtonShortcut";
 
@@ -50,19 +50,25 @@ public class ShortcutStrategy implements ButtonStrategy {
     private static final String PREFS_NAME = "CarLauncherPrefs";
 
     /**
-     * Identifiant unique de ce raccourci, servant de clé dans les SharedPreferences.
+     * Identifiant unique de ce raccourci, servant de clé dans les SharedPreferences pour mémoriser l'application associée.
      */
     private final String shortcutType;
 
     /**
      * Constructeur initialisant la stratégie de raccourci.
      *
-     * @param shortcutType Le type de raccourci (ex: "navigation", "musique").
+     * @param shortcutType Le type de raccourci (ex: "navigation", "music").
      */
     public ShortcutStrategy(String shortcutType) {
         this.shortcutType = shortcutType;
     }
 
+    /**
+     * Gère le clic simple sur le bouton.
+     * Lit le nom de paquet de l'application configurée dans les préférences et tente de la lancer.
+     *
+     * @param context Le contexte Android utilisé pour accéder aux préférences et démarrer l'activité.
+     */
     @Override
     public void onClick(Context context) {
         try {
@@ -89,6 +95,13 @@ public class ShortcutStrategy implements ButtonStrategy {
         }
     }
 
+    /**
+     * Gère l'appui long sur le bouton.
+     * Déclenche la boîte de dialogue permettant à l'utilisateur de sélectionner l'application à assigner à ce raccourci.
+     *
+     * @param context Le contexte Android courant.
+     * @return true pour indiquer que l'événement a été entièrement consommé.
+     */
     @Override
     public boolean onLongClick(Context context) {
         showAppSelectionDialog(context);
@@ -97,13 +110,12 @@ public class ShortcutStrategy implements ButtonStrategy {
 
     /**
      * Récupère la liste des applications via le provider mutualisé et affiche
-     * une boîte de dialogue pour permettre la sélection et l'enregistrement.
+     * une boîte de dialogue pour permettre la sélection et l'enregistrement dans les préférences.
      *
      * @param context Le contexte Android courant.
      */
     private void showAppSelectionDialog(Context context) {
         try {
-            // 1. Récupération ultra-propre de la liste via notre classe utilitaire
             List<AppInfo> appList = AppProvider.getApps(context);
 
             if (appList.isEmpty()) {
@@ -111,7 +123,6 @@ public class ShortcutStrategy implements ButtonStrategy {
                 return;
             }
 
-            // 2. Création de l'adaptateur pour afficher l'icône et le nom dans l'AlertDialog
             ArrayAdapter<AppInfo> adapter = new ArrayAdapter<AppInfo>(context, R.layout.app_list_selection, appList) {
                 @NonNull
                 @Override
@@ -138,7 +149,6 @@ public class ShortcutStrategy implements ButtonStrategy {
                 }
             };
 
-            // 3. Affichage de la boîte de dialogue
             AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("Choisir une application")
                     .setAdapter(adapter, (dialogInterface, which) -> {

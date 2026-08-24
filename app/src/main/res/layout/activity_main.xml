@@ -28,13 +28,9 @@
             android:layout_height="@dimen/_88sdp"
             android:layout_marginBottom="@dimen/_10sdp" />
 
-        <com.rguilbeau.carlauncher.component.CardButton
+        <com.rguilbeau.carlauncher.component.CardMaps
             android:layout_width="match_parent"
             android:layout_height="@dimen/_39sdp"
-            app:cardColor="#3877C6"
-            app:cardDescription="Lancement du GPS"
-            app:cardIcon="@drawable/ic_button_navigation"
-            app:cardTitle="Navigation"
             app:type="navigation" />
     </LinearLayout>
 

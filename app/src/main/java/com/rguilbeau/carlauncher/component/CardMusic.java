@@ -33,7 +33,7 @@ import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.component.button_strategy.ButtonStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
-import com.rguilbeau.carlauncher.service.MediaNotificationService;
+import com.rguilbeau.carlauncher.service.NotificationService;
 
 import java.util.List;
 import java.util.Objects;
@@ -43,60 +43,124 @@ import java.util.Objects;
  * <p>
  * Reçoit les mises à jour des métadonnées des sessions actives et gère les interactions
  * manuelles des boutons (Play, Pause, Suivant, Précédent).
- * Applique dynamiquement une couleur de fond au CardView uniquement lorsqu'une vraie pochette est disponible.
+ * Applique dynamiquement une couleur de fond au CardView lorsqu'une pochette est disponible.
  * </p>
-
+ *
  * @author rguilbeau
  * @version 3.2
  */
 @SuppressLint("SetTextI18n")
 public class CardMusic extends FrameLayout implements View.OnClickListener, View.OnLongClickListener {
 
+    /**
+     * Tag d'identification utilisé pour les journaux d'erreurs et de débogage (Logcat).
+     */
     private static final String TAG = "CardMusic";
 
-    // --- REGLAGES ET CONSTANTES VISUELLES ---
     /**
-     * Opacité de la pochette par défaut (1.0f = 100% opaque, visuel original intact).
+     * Opacité appliquée à la pochette d'album par défaut lorsqu'aucune illustration n'est disponible.
      */
     private static final float DEFAULT_ALBUM_ALPHA = 1.0f;
 
     /**
-     * Opacité d'une pochette active (0.35f = 35% d'opacité pour faire transparaître le fond coloré).
+     * Opacité appliquée à la pochette d'album lorsqu'une image d'album est affichée,
+     * permettant de laisser transparaître le fond coloré.
      */
     private static final float ACTIVE_ALBUM_ALPHA = 0.7f;
 
     /**
-     * Force de la teinte du fond (0.5f = 50% fond sombre d'origine + 50% couleur extraite de l'album).
+     * Ratio de mélange (blend ratio) entre le fond sombre par défaut et la couleur extraite de la pochette d'album.
      */
     private static final float TINT_BLEND_RATIO = 0.4f;
 
     /**
-     * Couleur de fond par défaut du composant quand aucune musique n'est active.
+     * Couleur de fond par défaut du composant lorsqu'aucune musique n'est en cours de lecture.
      */
     private final int DEFAULT_BG_COLOR = Color.parseColor("#121A1A");
 
+    /**
+     * Zone de texte affichant le titre de la chanson en cours de lecture.
+     */
     private final TextView txtSongTitle;
+
+    /**
+     * Zone de texte affichant le nom de l'artiste.
+     */
     private final TextView txtArtist;
+
+    /**
+     * Composant graphique affichant la pochette d'album ou l'image par défaut.
+     */
     private final ImageView imgAlbum;
+
+    /**
+     * Composant graphique affichant l'icône de lecture ou de pause dans le bouton central.
+     */
     private ImageView imgPlayIcon;
+
+    /**
+     * Vue racine sous forme de CardView sur laquelle est appliquée la couleur de fond dynamique.
+     */
     private CardView cardRoot;
 
+    /**
+     * Bouton ou zone cliquable déclenchant la lecture ou la pause.
+     */
     private final View btnPlay;
+
+    /**
+     * Bouton ou zone cliquable permettant de passer au morceau suivant.
+     */
     private final View btnNext;
+
+    /**
+     * Bouton ou zone cliquable permettant de revenir au morceau précédent.
+     */
     private final View btnPrev;
 
+    /**
+     * Service système Android gérant l'accès aux sessions multimédias actives.
+     */
     private final MediaSessionManager mediaSessionManager;
+
+    /**
+     * Composant pointant vers le NotificationService, requis pour s'authentifier auprès du MediaSessionManager.
+     */
     private final ComponentName notificationServiceComponent;
+
+    /**
+     * Contrôleur média attaché à la session de l'application musicale actuellement écoutée.
+     */
     private MediaController currentMediaController;
 
+    /**
+     * Stratégie de comportement déclenchée lors d'un clic simple ou long sur la carte (ex: ouverture de l'app musicale).
+     */
     private ButtonStrategy buttonStrategy;
+
+    /**
+     * Gestionnaire d'Autoplay permettant de lancer l'application musicale si aucune session n'est active.
+     */
     private final AutoPlayManager autoPlayManager;
 
+    /**
+     * Couleur de fond actuellement appliquée à la carte.
+     */
     private int currentBackgroundColor = DEFAULT_BG_COLOR;
 
+    /**
+     * Écouteur réagissant aux événements de démarrage et d'arrêt de la séquence d'Autoplay pour masquer ou réafficher les contrôles.
+     */
     private final AutoPlayManager.AutoPlayListener autoPlayListener;
+
+    /**
+     * Écouteur notifié lors de l'apparition, la modification ou la suppression de sessions média actives sur le système.
+     */
     private final MediaSessionManager.OnActiveSessionsChangedListener sessionsChangedListener = this::updateActiveMediaController;
 
+    /**
+     * Callback attaché au contrôleur média courant pour recevoir les changements de métadonnées et d'état de lecture.
+     */
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override
         public void onMetadataChanged(@Nullable MediaMetadata metadata) {
@@ -109,6 +173,13 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     };
 
+    /**
+     * Constructeur utilisé lors de l'instanciation du composant depuis un fichier de layout XML.
+     * Inflate le layout, relie les vues, initialise les services médias et attache les écouteurs.
+     *
+     * @param context Le contexte Android associé.
+     * @param attrs   Ensemble d'attributs XML passés au composant.
+     */
     public CardMusic(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
 
@@ -122,30 +193,28 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         btnNext = findViewById(R.id.btnNext);
         btnPrev = findViewById(R.id.btnPrev);
 
-        autoPlayListener = isRunning -> {
-            post(() -> {
-                if (isRunning) {
-                    if (txtSongTitle != null) txtSongTitle.setText("Lancement de la musique...");
-                    if (txtArtist != null) txtArtist.setText("Patientez...");
+        autoPlayListener = isRunning -> post(() -> {
+            if (isRunning) {
+                if (txtSongTitle != null) txtSongTitle.setText("Lancement de la musique...");
+                if (txtArtist != null) txtArtist.setText("Patientez...");
 
-                    resetDefaultAlbumVisuals();
+                resetDefaultAlbumVisuals();
 
-                    if (btnPlay != null) btnPlay.setVisibility(View.INVISIBLE);
-                    if (btnNext != null) btnNext.setVisibility(View.INVISIBLE);
-                    if (btnPrev != null) btnPrev.setVisibility(View.INVISIBLE);
+                if (btnPlay != null) btnPlay.setVisibility(View.INVISIBLE);
+                if (btnNext != null) btnNext.setVisibility(View.INVISIBLE);
+                if (btnPrev != null) btnPrev.setVisibility(View.INVISIBLE);
+            } else {
+                if (btnPlay != null) btnPlay.setVisibility(View.VISIBLE);
+                if (btnNext != null) btnNext.setVisibility(View.VISIBLE);
+                if (btnPrev != null) btnPrev.setVisibility(View.VISIBLE);
+
+                if (currentMediaController != null) {
+                    updateMediaUI(currentMediaController.getMetadata());
                 } else {
-                    if (btnPlay != null) btnPlay.setVisibility(View.VISIBLE);
-                    if (btnNext != null) btnNext.setVisibility(View.VISIBLE);
-                    if (btnPrev != null) btnPrev.setVisibility(View.VISIBLE);
-
-                    if (currentMediaController != null) {
-                        updateMediaUI(currentMediaController.getMetadata());
-                    } else {
-                        updateActiveMediaController(null);
-                    }
+                    updateActiveMediaController(null);
                 }
-            });
-        };
+            }
+        });
 
         if (btnPlay instanceof ImageView) {
             imgPlayIcon = (ImageView) btnPlay;
@@ -157,7 +226,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
 
         mediaSessionManager = (MediaSessionManager) context.getSystemService(Context.MEDIA_SESSION_SERVICE);
-        notificationServiceComponent = new ComponentName(context, MediaNotificationService.class);
+        notificationServiceComponent = new ComponentName(context, NotificationService.class);
         autoPlayManager = new AutoPlayManager(context);
 
         if (btnPlay != null) btnPlay.setOnClickListener(v -> play());
@@ -208,6 +277,10 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
 //        // --- FIN TEST VISUEL BOUCLE ---
     }
 
+    /**
+     * Appelée lorsque la vue est attachée à une fenêtre.
+     * S'abonne aux événements d'Autoplay et enregistre l'écouteur de sessions médias auprès du système.
+     */
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -227,6 +300,11 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     }
 
+    /**
+     * Mettre à jour le contrôleur média actif à partir de la liste des sessions multimédias disponibles.
+     *
+     * @param controllers Liste des contrôleurs média actifs transmis par le système.
+     */
     private void updateActiveMediaController(@Nullable List<MediaController> controllers) {
         if (currentMediaController != null) {
             currentMediaController.unregisterCallback(mediaCallback);
@@ -249,13 +327,19 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                     if (txtArtist != null) txtArtist.setText("--");
                 }
 
-                if (imgPlayIcon != null) imgPlayIcon.setImageResource(R.drawable.ic_button_music_play);
+                if (imgPlayIcon != null)
+                    imgPlayIcon.setImageResource(R.drawable.ic_button_music_play);
 
                 resetDefaultAlbumVisuals();
             });
         }
     }
 
+    /**
+     * Met à jour l'icône de lecture/pause en fonction de l'état de lecture actuel (PLAYING / PAUSED).
+     *
+     * @param state L'état de lecture transmis par le MediaController.
+     */
     private void updatePlaybackStateUI(@Nullable PlaybackState state) {
         boolean isPlaying = state != null && state.getState() == PlaybackState.STATE_PLAYING;
         post(() -> {
@@ -265,6 +349,11 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         });
     }
 
+    /**
+     * Met à jour les informations textuelles (titre, artiste) et l'illustration d'album à partir des métadonnées reçues.
+     *
+     * @param metadata Les métadonnées du morceau en cours de lecture.
+     */
     private void updateMediaUI(@Nullable MediaMetadata metadata) {
         if (metadata == null) {
             post(() -> {
@@ -295,7 +384,8 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 if (txtSongTitle != null) txtSongTitle.setText("Lancement de la musique...");
                 if (txtArtist != null) txtArtist.setText("Patientez...");
             } else {
-                if (txtSongTitle != null) txtSongTitle.setText(Objects.requireNonNullElse(title, "Aucune lecture"));
+                if (txtSongTitle != null)
+                    txtSongTitle.setText(Objects.requireNonNullElse(title, "Aucune lecture"));
                 if (txtArtist != null) txtArtist.setText(Objects.requireNonNullElse(artist, "--"));
             }
 
@@ -312,7 +402,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
     }
 
     /**
-     * Réinitialise le visuel à son état d'origine (image originale sans transparence et fond sombre).
+     * Réinitialise le visuel à son état d'origine (image par défaut et fond sombre).
      */
     private void resetDefaultAlbumVisuals() {
         if (imgAlbum != null) {
@@ -323,7 +413,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
     }
 
     /**
-     * Extrait la couleur vibrante de l'album et applique un voile coloré sur le fond du CardView.
+     * Extrait la couleur dominante/vibrante de la pochette et applique une teinte fluide sur le fond de la carte.
      *
      * @param bitmap La pochette d'album en cours de lecture.
      */
@@ -346,7 +436,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
     }
 
     /**
-     * Anime la transition de couleur du fond directement sur le CardView.
+     * Anime la transition de couleur du fond du CardView entre la couleur actuelle et la nouvelle couleur.
      *
      * @param colorFrom Couleur de départ.
      * @param colorTo   Couleur cible.
@@ -369,8 +459,10 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         colorAnimation.start();
     }
 
-    // --- Commandes de lecture ---
-
+    /**
+     * Exécute la commande de lecture ou de pause sur la session multimédia active.
+     * Lance l'Autoplay si aucune session n'est connectée.
+     */
     public void play() {
         try {
             if (currentMediaController != null) {
@@ -390,6 +482,10 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     }
 
+    /**
+     * Envoie la commande pour passer au morceau suivant sur la session active.
+     * Lance l'Autoplay si aucune session n'est connectée.
+     */
     public void next() {
         try {
             if (currentMediaController != null) {
@@ -403,6 +499,10 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     }
 
+    /**
+     * Envoie la commande pour revenir au morceau précédent sur la session active.
+     * Lance l'Autoplay si aucune session n'est connectée.
+     */
     public void previous() {
         try {
             if (currentMediaController != null) {
@@ -416,12 +516,17 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     }
 
+    /**
+     * Appelée lorsque la vue est détachée de la fenêtre.
+     * Se désabonne de tous les écouteurs (Autoplay, MediaController, MediaSessionManager) pour éviter les fuites de mémoire.
+     */
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         AutoPlayManager.removeListener(autoPlayListener);
         if (autoPlayManager != null) autoPlayManager.stop();
-        if (currentMediaController != null) currentMediaController.unregisterCallback(mediaCallback);
+        if (currentMediaController != null)
+            currentMediaController.unregisterCallback(mediaCallback);
         if (mediaSessionManager != null) {
             try {
                 mediaSessionManager.removeOnActiveSessionsChangedListener(sessionsChangedListener);
@@ -431,11 +536,22 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         }
     }
 
+    /**
+     * Intercepte le clic simple sur la carte et le délègue à la stratégie de raccourci.
+     *
+     * @param v La vue cliquée.
+     */
     @Override
     public void onClick(View v) {
         if (buttonStrategy != null) buttonStrategy.onClick(getContext());
     }
 
+    /**
+     * Intercepte l'appui long sur la carte et le délègue à la stratégie de raccourci.
+     *
+     * @param v La vue ayant reçu l'appui long.
+     * @return true si l'événement a été consommé, false sinon.
+     */
     @Override
     public boolean onLongClick(View v) {
         return buttonStrategy != null && buttonStrategy.onLongClick(getContext());

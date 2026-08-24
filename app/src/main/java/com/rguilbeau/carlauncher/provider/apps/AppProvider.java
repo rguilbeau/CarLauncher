@@ -15,18 +15,20 @@ import java.util.List;
  * Classe utilitaire fournissant un accès statique à la liste des applications du système.
  *
  * @author rguilbeau
- * @version 1.0
  */
 public class AppProvider {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "AppProvider";
 
     /**
      * Récupère la liste de toutes les applications lançables installées sur l'appareil.
-     * Exclut le Car Launcher lui-même de la liste.
+     * Exclut le Car Launcher lui-même de la liste pour éviter qu'il ne s'affiche dans son propre tiroir.
      *
-     * @param context Le contexte Android.
-     * @return Une liste triée par ordre alphabétique d'objets {@link AppInfo}.
+     * @param context Le contexte Android pour accéder au PackageManager.
+     * @return Une liste d'objets {@link AppInfo} triée par ordre alphabétique.
      */
     public static List<AppInfo> getApps(Context context) {
         List<AppInfo> appList = new ArrayList<>();
@@ -52,7 +54,7 @@ public class AppProvider {
                 appList.add(new AppInfo(appName, packageName, appIcon));
             }
 
-            // Tri alphabétique automatique
+            // Tri alphabétique automatique grâce à l'implémentation de Comparable dans AppInfo
             Collections.sort(appList);
 
         } catch (Exception e) {

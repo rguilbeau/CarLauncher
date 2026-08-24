@@ -20,10 +20,9 @@ import com.rguilbeau.carlauncher.component.button_strategy.DayNightStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
 
 /**
- * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
+ * Composant d'interface utilisateur autonome offrant une carte cliquable et personnalisable.
  * <p>
- * Ce composant agit comme un bouton dynamique pour le Car Launcher.
- * Il délègue l'intégralité de son comportement (clic simple et appui long) à une interface
+ * Ce composant délègue l'intégralité de son comportement (clic simple et appui long) à une interface
  * {@link ButtonStrategy}, implémentant ainsi le <b>Patron de conception Stratégie (Strategy Pattern)</b>.
  * Le choix de la stratégie est déterminé à l'instanciation via l'attribut XML "type".
  * </p>
@@ -56,7 +55,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
     public CardButton(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
 
-        // 1. Inflation du layout interne associé au composant
+        // Inflation du layout XML définissant la structure visuelle interne de la carte
         LayoutInflater.from(context).inflate(R.layout.card_button, this, true);
 
         String type = "";
@@ -65,14 +64,12 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
         int cardColor = 0;
         int cardIconResId = 0;
 
-        // 2. Récupération des attributs XML personnalisés
+        // Lecture et extraction des attributs déclarés directement dans le layout XML
         if (attrs != null) {
             try {
                 TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.CardButton);
 
                 type = a.getString(R.styleable.CardButton_type);
-
-                // Récupération les propriétés de la carte
                 title = a.getString(R.styleable.CardButton_cardTitle);
                 description = a.getString(R.styleable.CardButton_cardDescription);
                 cardColor = a.getColor(R.styleable.CardButton_cardColor, 0);
@@ -84,7 +81,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
             }
         }
 
-        // 3. Application des propriétés visuelles
+        // Application dynamique des styles et contenus textuels sur les composants enfants
         try {
             androidx.cardview.widget.CardView buttonRoot = findViewById(R.id.card_root);
             android.widget.ImageView buttonIcon = findViewById(R.id.button_icon);
@@ -111,14 +108,13 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
             Log.e(TAG, "Error applying visual attributes to CardButton views", e);
         }
 
-        // Sécurisation de la valeur lue pour le type
+        // Sécurisation de la chaîne pour éviter les NullPointerException lors du contrôle du type
         if (type == null) {
             type = "";
         }
 
-        // 4. Initialisation de la logique métier (Stratégie)
+        // Instanciation de la stratégie métier selon le type spécifié dans le XML
         try {
-            // Détermination dynamique de la stratégie à adopter
             if (AppDrawerStrategy.TYPE.equals(type)) {
                 this.buttonStrategy = new AppDrawerStrategy();
             } else if (DayNightStrategy.TYPE.equals(type)) {
@@ -129,8 +125,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
                 throw new RuntimeException("Button type not defined in XML configuration");
             }
 
-            // Attachement des écouteurs d'événements uniquement si la stratégie a bien été définie
-            // On attache le clic sur button_root pour déclencher l'effet visuel (foreground)
+            // Attachement des écouteurs sur la vue racine pour déclencher l'effet visuel de clic (ripple/foreground)
             View root = findViewById(R.id.card_root);
             if (root != null) {
                 root.setOnClickListener(this);
@@ -146,7 +141,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
     /**
      * Intercepte le clic simple sur la carte et délègue l'exécution à la stratégie configurée.
      *
-     * @param v La vue qui a été cliquée (cette instance).
+     * @param v La vue qui a été cliquée.
      */
     @Override
     public void onClick(View v) {

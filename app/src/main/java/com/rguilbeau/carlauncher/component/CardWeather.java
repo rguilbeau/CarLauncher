@@ -43,7 +43,7 @@ import okhttp3.Response;
  * <p>
  * Ce composant assure l'affichage de la météo et de la localisation courante.
  * Il s'adapte dynamiquement en réduisant son intervalle de rafraîchissement
- * à 30 secondes en cas d'absence de GPS ou d'Internet, puis repasse à 10 minutes
+ * à 3 secondes en cas d'absence de GPS ou d'Internet, puis repasse à 10 minutes
  * dès que les données ont été récupérées avec succès.
  * </p>
  *
@@ -63,27 +63,27 @@ public class CardWeather extends FrameLayout implements Runnable {
     private static final long REFRESH_INTERVAL_MS = 600000L;
 
     /**
-     * Intervalle de réessai rapide si échec GPS ou Internet en millisecondes (5 secondes).
+     * Intervalle de réessai rapide si échec GPS ou réseau en millisecondes (3 secondes).
      */
-    private static final long FAST_RETRY_INTERVAL_MS = 3000;
+    private static final long FAST_RETRY_INTERVAL_MS = 3000L;
 
     /**
-     * Composant visuel affichant la température actuelle.
+     * Composant visuel affichant la température actuelle en °C.
      */
     private final TextView txtWeatherTemp;
 
     /**
-     * Composant visuel affichant l'icône météo.
+     * Composant visuel affichant l'icône représentant l'état météo.
      */
     private final ImageView imageViewWeatherIcon;
 
     /**
-     * Composant visuel affichant le background de la carte météo.
+     * Composant visuel affichant l'arrière-plan dynamique de la carte météo.
      */
     private final ImageView imageViewWeatherBackground;
 
     /**
-     * Composant visuel affichant le nom de la localité ou de la ville.
+     * Composant visuel affichant le nom de la ville ou la localité.
      */
     private final TextView txtCity;
 
@@ -98,37 +98,84 @@ public class CardWeather extends FrameLayout implements Runnable {
     private final Handler weatherHandler = new Handler(Looper.getMainLooper());
 
     /**
-     * Client HTTP synchrone/asynchrone basé sur la bibliothèque OkHttp.
+     * Client HTTP basé sur la bibliothèque OkHttp pour la récupération des métriques météo.
      */
     private final OkHttpClient httpClient = new OkHttpClient();
 
     /**
-     * Service d'exécution mono-thread dédié au traitement asynchrone hors du UI Thread (ex: Geocoder).
+     * Service d'exécution mono-thread dédié au traitement asynchrone hors du thread principal (ex: Geocoder).
      */
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     /**
-     * Types de conditions météorologiques gérés par le composant.
+     * Énumération des différentes conditions météorologiques gérées par le composant.
      */
-    enum WeatherType {SUN, SUN_CLOUD, CLOUD, RAIN, SNOW, THUNDERSTORM}
+    enum WeatherType {
+        /**
+         * Ensoleillé / Ciel dégagé.
+         */
+        SUN,
+        /**
+         * Éclaircies / Soleil et nuages.
+         */
+        SUN_CLOUD,
+        /**
+         * Nuageux / Couvert.
+         */
+        CLOUD,
+        /**
+         * Pluvieux.
+         */
+        RAIN,
+        /**
+         * Neigeux.
+         */
+        SNOW,
+        /**
+         * Orageux.
+         */
+        THUNDERSTORM
+    }
 
     /**
-     * Moment de la journée déterminé par rapport au lever et au coucher du soleil.
+     * Énumération du moment de la journée (Jour / Nuit) déterminé selon les heures solaires.
      */
-    enum WeatherTime {DAY, NIGHT}
+    enum WeatherTime {
+        /**
+         * Période diurne (jour).
+         */
+        DAY,
+        /**
+         * Période nocturne (nuit).
+         */
+        NIGHT
+    }
 
     /**
-     * Dictionnaire mappant le moment de la journée et le type de météo à leurs ressources graphiques.
+     * Dictionnaire associant le moment de la journée et le type météo à leurs ressources visuelles respectives.
      */
     private final Map<WeatherTime, Map<WeatherType, WeatherInfo>> weatherInfoMap;
 
     /**
-     * Classe utilitaire stockant les identifiants de ressources pour le fond et l'icône d'une condition météo.
+     * Conteneur de ressources associant l'image d'arrière-plan et l'icône correspondantes à un état météo.
      */
-    class WeatherInfo {
+    static class WeatherInfo {
+        /**
+         * Identifiant de ressource drawable pour le fond de la carte.
+         */
         public int background;
+
+        /**
+         * Identifiant de ressource drawable pour l'icône météo.
+         */
         public int icon;
 
+        /**
+         * Construit un objet d'information visuelle météo.
+         *
+         * @param resBackground Identifiant de ressource du fond.
+         * @param resIcon       Identifiant de ressource de l'icône.
+         */
         public WeatherInfo(int resBackground, int resIcon) {
             this.background = resBackground;
             this.icon = resIcon;
@@ -137,9 +184,10 @@ public class CardWeather extends FrameLayout implements Runnable {
 
     /**
      * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier de layout XML.
+     * Initialise la cartographie des ressources graphiques, inflate la vue et prépare le client GPS.
      *
-     * @param context Le contexte Android associé à l'environnement d'exécution.
-     * @param attrs   Ensemble d'attributs XML passés au composant lors de son gonflage.
+     * @param context Le contexte Android associé.
+     * @param attrs   Ensemble d'attributs XML passés au composant.
      */
     public CardWeather(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -163,22 +211,19 @@ public class CardWeather extends FrameLayout implements Runnable {
                 )
         );
 
-        // Inflation du layout interne associé au composant
         LayoutInflater.from(context).inflate(R.layout.card_weather, this, true);
 
-        // Liaison des vues internes par leurs identifiants
         txtWeatherTemp = findViewById(R.id.txtWeatherTemp);
         imageViewWeatherIcon = findViewById(R.id.imageViewWeatherIcon);
         txtCity = findViewById(R.id.txtCity);
         imageViewWeatherBackground = findViewById(R.id.imageViewWeatherBackground);
 
-        // Initialisation du client de géolocalisation
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(context);
     }
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est rattachée à une fenêtre active.
-     * Déclenche la première exécution du cycle de mise à jour météo.
+     * Déclenche la première exécution de la boucle de rafraîchissement météo.
      */
     @Override
     protected void onAttachedToWindow() {
@@ -190,7 +235,7 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Tâche exécutée sur le thread principal pour orchestrer la récupération des données GPS et météo.
+     * Tâche exécutée périodiquement sur le thread principal pour orchestrer l'obtention des coordonnées GPS et des données météo.
      */
     @Override
     @SuppressLint("MissingPermission")
@@ -200,11 +245,11 @@ public class CardWeather extends FrameLayout implements Runnable {
                 fusedLocationClient.getLastLocation()
                         .addOnSuccessListener(location -> {
                             if (location != null) {
-                                // GPS OK : On demande le nom de ville et la météo
+                                // Récupération de la position GPS réussie : lancement des requêtes réseau
                                 fetchCityName(location.getLatitude(), location.getLongitude());
                                 fetchWeather(location.getLatitude(), location.getLongitude());
                             } else {
-                                // Pas de position GPS : Réessai rapide
+                                // Signal GPS indisponible : passage en réessai rapide
                                 if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
                                 if (txtCity != null) txtCity.setText("Recherche GPS...");
                                 scheduleNextUpdate(true);
@@ -227,10 +272,9 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Planifie la prochaine exécution de la mise à jour selon l'état des services.
-     * Supprime tout rappel existant pour éviter les exécutions en double.
+     * Planifie la prochaine exécution du cycle de mise à jour.
      *
-     * @param fastRetry true pour re-tester dans 30s (ou 5s), false pour attendre les 10 minutes standard.
+     * @param fastRetry true pour reprogrammer un réessai rapide, false pour attendre le délai nominal de 10 minutes.
      */
     private void scheduleNextUpdate(boolean fastRetry) {
         if (weatherHandler != null) {
@@ -241,11 +285,11 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Exécute un géocodage inverse de façon asynchrone sur un thread d'arrière-plan afin d'obtenir
-     * le nom de la localité à partir de ses coordonnées géographiques.
+     * Effectue un géocodage inverse asynchrone hors du thread principal pour convertir
+     * les coordonnées latitude/longitude en nom de ville.
      *
-     * @param lat La latitude de la position courante.
-     * @param lon La longitude de la position courante.
+     * @param lat La latitude de la position actuelle.
+     * @param lon La longitude de la position actuelle.
      */
     private void fetchCityName(double lat, double lon) {
         executorService.execute(() -> {
@@ -274,12 +318,11 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Effectue une requête HTTP asynchrone vers l'API Open-Meteo pour récupérer la température,
-     * la condition météo actuelle, ainsi que les heures de lever et coucher du soleil,
-     * puis planifie la boucle suivante.
+     * Lance une requête HTTP asynchrone vers l'API Open-Meteo pour obtenir la température,
+     * le code météo et les horaires de lever/coucher du soleil, puis met à jour l'interface.
      *
-     * @param lat La latitude de la position courante.
-     * @param lon La longitude de la position courante.
+     * @param lat La latitude de la position actuelle.
+     * @param lon La longitude de la position actuelle.
      */
     private void fetchWeather(double lat, double lon) {
         String url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current_weather=true&daily=sunrise,sunset&timezone=auto";
@@ -289,7 +332,7 @@ public class CardWeather extends FrameLayout implements Runnable {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
                 Log.e(TAG, "Failed to execute Open-Meteo API request (Network issue?)", e);
-                scheduleNextUpdate(true); // Échec réseau : Réessai rapide
+                scheduleNextUpdate(true);
             }
 
             @Override
@@ -301,21 +344,17 @@ public class CardWeather extends FrameLayout implements Runnable {
                         JSONObject currentWeather = jsonObject.getJSONObject("current_weather");
                         JSONObject daily = jsonObject.getJSONObject("daily");
 
-                        // Extraction des données courantes
                         int temp = (int) Math.round(currentWeather.getDouble("temperature"));
                         int weatherCode = currentWeather.getInt("weathercode");
                         String currentTimeStr = currentWeather.getString("time");
 
-                        // Extraction des heures de lever et coucher du soleil du jour (index 0)
                         String sunriseStr = daily.getJSONArray("sunrise").getString(0);
                         String sunsetStr = daily.getJSONArray("sunset").getString(0);
 
-                        // Détermination du contexte météo (Type et Moment de la journée)
                         WeatherType type = mapWeatherCodeToType(weatherCode);
                         WeatherTime time = determineWeatherTime(currentTimeStr, sunriseStr, sunsetStr);
                         WeatherInfo info = getWeatherInfo(time, type);
 
-                        // Mise à jour de l'UI
                         post(() -> {
                             if (txtWeatherTemp != null) {
                                 txtWeatherTemp.setText(temp + "°C");
@@ -328,7 +367,6 @@ public class CardWeather extends FrameLayout implements Runnable {
                             }
                         });
 
-                        // Succès complet ! Repos pendant 10 minutes.
                         scheduleNextUpdate(false);
 
                     } catch (Exception e) {
@@ -344,12 +382,12 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Détermine s'il fait jour ou nuit en comparant l'heure actuelle aux heures de lever et de coucher du soleil.
+     * Compare l'heure actuelle avec les heures de lever et coucher du soleil pour déterminer s'il fait jour ou nuit.
      *
-     * @param current L'heure actuelle renvoyée par l'API.
-     * @param sunrise L'heure du lever du soleil du jour.
-     * @param sunset  L'heure du coucher du soleil du jour.
-     * @return WeatherTime.DAY s'il fait jour, sinon WeatherTime.NIGHT.
+     * @param current L'horodatage actuel au format ISO renvoyé par l'API.
+     * @param sunrise L'horodatage du lever du soleil du jour.
+     * @param sunset  L'horodatage du coucher du soleil du jour.
+     * @return WeatherTime.DAY s'il fait jour, WeatherTime.NIGHT sinon.
      */
     private WeatherTime determineWeatherTime(String current, String sunrise, String sunset) {
         try {
@@ -364,7 +402,6 @@ public class CardWeather extends FrameLayout implements Runnable {
                     return WeatherTime.NIGHT;
                 }
             } else {
-                // Fallback de comparaison de chaîne si version inférieure à Android 8
                 if (current.compareTo(sunrise) >= 0 && current.compareTo(sunset) < 0) {
                     return WeatherTime.DAY;
                 }
@@ -372,15 +409,15 @@ public class CardWeather extends FrameLayout implements Runnable {
             }
         } catch (Exception e) {
             Log.e(TAG, "Erreur lors de l'analyse des horaires soleil", e);
-            return WeatherTime.DAY; // Valeur par défaut en cas d'erreur
+            return WeatherTime.DAY;
         }
     }
 
     /**
-     * Convertit un code météo WMO (World Meteorological Organization) en une énumération WeatherType.
+     * Mappe un code météo WMO (World Meteorological Organization) vers l'énumération {@link WeatherType}.
      *
-     * @param weatherCode Le code d'état météorologique fourni par l'API Open-Meteo.
-     * @return Le WeatherType correspondant à la condition actuelle.
+     * @param weatherCode Le code WMO fourni par l'API.
+     * @return La condition météorologique correspondante.
      */
     private WeatherType mapWeatherCodeToType(int weatherCode) {
         if (weatherCode == 0) return WeatherType.SUN;
@@ -390,15 +427,16 @@ public class CardWeather extends FrameLayout implements Runnable {
         if (weatherCode >= 71 && weatherCode <= 77) return WeatherType.SNOW;
         if (weatherCode >= 95) return WeatherType.THUNDERSTORM;
 
-        return WeatherType.CLOUD; // Fallback par défaut
+        return WeatherType.CLOUD;
     }
 
     /**
-     * Récupère les ressources graphiques (icône et fond) adaptées à la condition météo et au moment de la journée.
+     * Récupère le conteneur {@link WeatherInfo} contenant les ressources visuelles appropriées
+     * selon le moment de la journée et le type de météo.
      *
      * @param time Le moment de la journée (Jour ou Nuit).
-     * @param type Le type de condition météorologique.
-     * @return Les informations contenant les identifiants de ressources (WeatherInfo).
+     * @param type Le type de météo.
+     * @return L'objet WeatherInfo contenant les identifiants de ressources drawable.
      */
     private WeatherInfo getWeatherInfo(WeatherTime time, WeatherType type) {
         if (weatherInfoMap.containsKey(time)) {
@@ -408,15 +446,15 @@ public class CardWeather extends FrameLayout implements Runnable {
                 return infoMap.get(type);
             }
 
-            return infoMap.get(WeatherType.SUN); // fallback au sein du moment de la journée
+            return infoMap.get(WeatherType.SUN);
         }
 
-        return weatherInfoMap.get(WeatherTime.DAY).get(WeatherType.SUN); // fallback global
+        return weatherInfoMap.get(WeatherTime.DAY).get(WeatherType.SUN);
     }
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est détachée de sa fenêtre parent.
-     * Assure le nettoyage des ressources pour éviter les fuites de mémoire (Memory Leaks).
+     * Annule les callbacks du Handler pour éviter les fuites de mémoire.
      */
     @Override
     protected void onDetachedFromWindow() {
