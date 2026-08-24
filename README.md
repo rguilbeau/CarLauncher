@@ -1,5 +1,7 @@
 # CarLauncher
 
+![Aperçu de CarLauncher](docs/preview.png)
+
 ## Compilation (Release)
 
 Pour que le système de mise à jour automatique via GitHub (Self-Update) fonctionne sur l'autoradio, chaque nouvelle version doit obligatoirement être signée avec la même clé cryptographique que la version initiale installée en `priv-app`.
@@ -44,8 +46,28 @@ Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indi
 3. **Mises à jour silencieuses (Self-Update) :**
    Ce statut octroie la permission `INSTALL_PACKAGES`, permettant à l'application de télécharger ses propres mises à jour depuis GitHub et de les installer en arrière-plan, sans aucune intervention de l'utilisateur à l'écran.
 
+### Permissions système
+
+Le fichier `privapp-permissions-carlauncher.xml` présent à la racine du projet permet de valider les permissions privilégiées (comme `WRITE_SECURE_SETTINGS` ou `INSTALL_PACKAGES`) lorsque l'application est exécutée en tant qu'application système dans `/system/priv-app/`.
+
+Sous Android 10 (API 29), ce fichier est obligatoire pour éviter que le système ne bloque l'application au démarrage.
+
+* **Usage :** Déclarer les privilèges accordés à l'application.
+* **Déploiement :** Ce fichier est automatiquement poussé vers `/system/etc/permissions/` lors de l'installation via le script `install.bat`.
 
 ### Emulateur
+
+#### Configuration de l'émulateur (AVD)
+
+Pour développer et tester l'application sur PC dans des conditions équivalentes à l'autoradio cible :
+
+* **Écran :** 9" — 1024 × 600 (120 dpi)
+* **Version Android :** API 29 « Q » (Android 10)
+* **Image système :** Google APIs Intel x86_64 Atom System Image
+
+> **Note sur le système :** Bien que l'autoradio soit vendu sous la mention « Android 13 » (et l'affiche dans son interface d'origine), l'extraction des propriétés système (`build.prop`) confirme qu'il s'agit d'un **Android 10 (API 29)** maquillé par le constructeur. L'environnement de test sur émulateur doit donc strictement cibler l'API 29.
+
+#### Déverrouillage de l'émulateur
 
 Pour tester l'application dans les mêmes conditions (en tant que `priv-app`) sur votre PC, il faut injecter l'APK directement dans le système de l'émulateur Android Studio.
 
@@ -67,7 +89,7 @@ Dans un autre terminal, désactivez les sécurités de vérification et redémar
 
 ```bash
 adb root
-adb disable-verity
+adb shell avbctl disable-verification
 adb reboot
 ```
 
@@ -115,10 +137,12 @@ Pour installer l'application sur la voiture, nous utilisons ADB via Wi-Fi. Le PC
 *(Si une fenêtre d'autorisation de débogage apparaît sur l'écran de l'autoradio, cochez "Toujours autoriser cet ordinateur" et validez).*
 
 3. **Lancer l'installation :**
-- Une fois l'autoradio connecté, exécutez simplement le script **`install.bat`** depuis votre PC.
-- Le script va transférer l'APK dans la partition système (`/system/priv-app/`) et redémarrer la machine automatiquement pour appliquer les droits.
+- Une fois l'autoradio connecté, exécutez simplement le script **`install.bat`** depuis votre PC. Le script va:
+  - Transférer l'APK dans la partition système (`/system/priv-app/`)
+  - Copier le fichier des permissions `privapp-permissions-carlauncher.xml` dans `/system/etc/permissions/`
+  - Redémarrer la machine automatiquement pour appliquer les droits.
 
-## Vérification de l'installation
+### Vérification de l'installation
 
 Une fois l'appareil redémarré, il est important de vérifier qu'Android a bien reconnu l'application avec ses privilèges système.
 
