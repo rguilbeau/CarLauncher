@@ -6,7 +6,7 @@
 
 Pour que le système de mise à jour automatique via GitHub (Self-Update) fonctionne sur l'autoradio, chaque nouvelle version doit obligatoirement être signée avec la même clé cryptographique que la version initiale installée en `priv-app`.
 
-**Note sur la sécurité :** Bien que ce dépôt soit public, le fichier de signature (keystore) est délibérément inclus dans le code source. C'est un choix assumé : ce projet est strictement personnel, destiné à une utilisation privée, et ne sera jamais publié sur le Play Store. Cette approche simplifie considérablement la compilation locale et l'automatisation via GitHub Actions.
+> **Note sur la sécurité :** Bien que ce dépôt soit public, le fichier de signature (keystore) est délibérément inclus dans le code source. C'est un choix assumé : ce projet est strictement personnel, destiné à une utilisation privée, et ne sera jamais publié sur le Play Store. Cette approche simplifie considérablement la compilation locale et l'automatisation via GitHub Actions.
 
 ### Informations de la clé
 
@@ -20,16 +20,19 @@ Pour que le système de mise à jour automatique via GitHub (Self-Update) foncti
 
 La configuration de la signature étant déjà codée en dur dans le fichier `build.gradle`, Android Studio gère la signature de manière totalement transparente.
 
-1. En bas à gauche d'Android Studio, ouvrez l'onglet **Build Variants**.
-2. Passez le variant de compilation du module `app` de `debug` à **`release`**.
-3. Dans le menu principal, cliquez sur **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
-4. L'application prête à être déployée (ou attachée à une release GitHub) sera générée ici : `app/build/outputs/apk/release/app-release.apk`.
+1. Dans le menu principal, cliquer sur **Build > Generate Signed App Bundle(s) or APK(s)**.
+2. Sélectionner **APK**.
+3. Choisir la clé pour la signature de l'application.
+4. Choisir **Release** puis cliquer sur le bouton **Create**.
+5. L'application prête à être déployée sera générée ici : `app/build/outputs/apk/release/app-release.apk`.
 
 ### Déploiement Automatisé (GitHub Actions)
 
-Ce projet utilise GitHub Actions pour compiler, signer et publier automatiquement l'application à chaque nouvelle version. L'APK généré est ensuite mis à disposition de l'autoradio qui le téléchargera via son système de mise à jour interne.
+Ce projet utilise GitHub Actions pour compiler, signer et publier (création de release) automatiquement l'application à chaque nouvelle version. L'APK généré est ensuite mis à disposition de l'autoradio qui le téléchargera via son système de mise à jour interne.
 
-Le script est configuré pour se déclencher automatiquement lorsqu'un tag au format `x.x.x` est poussé sur le dépôt.
+Le script est configuré pour se déclencher automatiquement lorsqu'un tag est poussé sur le dépôt.
+
+> **Note :** Ajouter un commentaire au push du tag pour l'intégrer automatiquement au changelog de la release.
 
 ## Installation
 
@@ -43,7 +46,7 @@ Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indi
    Pour recevoir la vitesse, le régime moteur (RPM) et les signaux de contact (ACC ON/OFF), l'application doit s'abonner aux flux du boîtier CANbus. Cela nécessite de modifier des paramètres restreints d'Android (`Settings.Global`) via la permission critique `WRITE_SECURE_SETTINGS`. Une application `priv-app` obtient cette permission automatiquement sans blocage de sécurité.
 2. **Immunité contre la fermeture (Task Killer) :**
    Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, notre service de chronomètre devient intouchable. Il tournera toujours en tâche de fond pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
-3. **Mises à jour silencieuses (Self-Update) :**
+3. **Mises à jour (Self-Update) :**
    Ce statut octroie la permission `INSTALL_PACKAGES`, permettant à l'application de télécharger ses propres mises à jour depuis GitHub et de les installer en arrière-plan, sans aucune intervention de l'utilisateur à l'écran.
 
 ### Permissions système
@@ -55,7 +58,7 @@ Sous Android 10 (API 29), ce fichier est obligatoire pour éviter que le systèm
 * **Usage :** Déclarer les privilèges accordés à l'application.
 * **Déploiement :** Ce fichier est automatiquement poussé vers `/system/etc/permissions/` lors de l'installation via le script `install.bat`.
 
-### Emulateur
+### Émulateur
 
 #### Configuration de l'émulateur (AVD)
 
@@ -69,15 +72,13 @@ Pour développer et tester l'application sur PC dans des conditions équivalente
 
 #### Déverrouillage de l'émulateur
 
-Pour tester l'application dans les mêmes conditions (en tant que `priv-app`) sur votre PC, il faut injecter l'APK directement dans le système de l'émulateur Android Studio.
-
-**Prérequis :** Vous devez obligatoirement utiliser un émulateur basé sur une image **Google APIs** (les images *Google Play* sont verrouillées en lecture seule et ne fonctionneront pas).
+Pour tester l'application dans les mêmes conditions (en tant que `priv-app`) sur PC, il faut injecter l'APK directement dans le système de l'émulateur Android Studio.
 
 **Procédure étape par étape :**
 
 1. **Lancer l'émulateur en mode écriture :**
 
-Ouvrez un terminal et démarrez votre émulateur avec le flag `writable-system` (remplacez `Nom_Emulateur` par le vôtre) :
+Ouvrir un terminal et démarrer l'émulateur avec le flag `writable-system` (remplacer `Nom_Emulateur` par le nom configuré) :
 
 ```bash
 emulator -avd Nom_Emulateur -writable-system
@@ -85,7 +86,7 @@ emulator -avd Nom_Emulateur -writable-system
 
 2. **Déverrouiller le système (ADB) :**
 
-Dans un autre terminal, désactivez les sécurités de vérification et redémarrez :
+Dans un autre terminal, désactiver les sécurités de vérification et redémarrer :
 
 ```bash
 adb root
@@ -95,52 +96,45 @@ adb reboot
 
 3. **Monter le système en écriture :**
 
-Une fois l'émulateur redémarré sur l'écran d'accueil, tapez :
+Une fois l'émulateur redémarré sur l'écran d'accueil, taper :
 
 ```bash
 adb root
 adb remount
 ```
-_(Le terminal doit afficher remount succeeded)_
-
-4. **Appliquer l'installation :**
-
-L'installation, l'attribution des privilèges et le redémarrage sont gérés automatiquement. 
-Assurez-vous d'avoir compilé la version Release au préalable, puis exécutez simplement le script prévu à cet effet situé à la racine du projet :
-   
-Double-cliquez sur `install.bat` (ou lancez-le depuis un terminal). 
-   
-*Le script va se charger de monter la partition système en écriture, de copier l'APK dans `/system/priv-app/CarLauncher/` et de redémarrer l'appareil pour appliquer les droits.*
+_(Le terminal doit afficher `remount succeeded`)_
 
 ### Autoradio (Appareil physique)
 
-Pour installer l'application sur la voiture, nous utilisons ADB via Wi-Fi. Le PC et l'autoradio doivent impérativement être connectés au **même réseau Wi-Fi**. 
+Pour installer l'application sur la voiture, l'utilisation d'ADB via Wi-Fi est requise. Le PC et l'autoradio doivent impérativement être connectés au **même réseau Wi-Fi**.
 
-*Astuce : La méthode la plus simple et la plus fiable consiste à activer le partage de connexion (hotspot Wi-Fi) de votre smartphone, puis d'y connecter à la fois votre PC et l'autoradio.*
+*Astuce : La méthode la plus simple et la plus fiable consiste à activer le partage de connexion (hotspot Wi-Fi) d'un smartphone, puis d'y connecter à la fois le PC et l'autoradio.*
 
-**Sur l'autoradio, le débogage Wifi est en root par défaut**
+**Sur l'autoradio, le débogage Wi-Fi est en root par défaut.**
 
 **Procédure de connexion et d'installation :**
 
 1. **Récupérer l'adresse IP de l'autoradio :**
-- Sur votre téléphone, allez dans les paramètres du **Partage de connexion** (Hotspot Wi-Fi).
-- Cherchez la section **Appareils connectés** (ou "Gérer les appareils").
-- Repérez votre autoradio dans la liste pour y trouver l'adresse IP qui lui a été attribuée (ex: `192.168.43.50`).
+- Sur le téléphone, aller dans les paramètres du **Partage de connexion** (Hotspot Wi-Fi).
+- Chercher la section **Appareils connectés** (ou *Gérer les appareils*).
+- Repérer l'autoradio dans la liste pour y trouver l'adresse IP attribuée (ex : `192.168.43.50`).
 
 2. **Se connecter via ADB (Port 9876) :**
 - L'autoradio utilise le port spécifique `9876` pour le débogage réseau.
-- Sur votre PC, ouvrez un terminal et tapez la commande suivante en remplaçant par la bonne IP :
+- Sur le PC, ouvrir un terminal et taper la commande suivante en remplaçant par la bonne IP :
     ```bash
     adb connect 192.168.43.50:9876
     ```
-- Le terminal doit vous répondre `connected to 192.168.43.50:9876`. 
-*(Si une fenêtre d'autorisation de débogage apparaît sur l'écran de l'autoradio, cochez "Toujours autoriser cet ordinateur" et validez).*
+- Le terminal doit répondre `connected to 192.168.43.50:9876`.
+  *(Si une fenêtre d'autorisation de débogage apparaît sur l'écran de l'autoradio, cocher « Toujours autoriser cet ordinateur » et valider).*
 
-3. **Lancer l'installation :**
-- Une fois l'autoradio connecté, exécutez simplement le script **`install.bat`** depuis votre PC. Le script va:
-  - Transférer l'APK dans la partition système (`/system/priv-app/`)
-  - Copier le fichier des permissions `privapp-permissions-carlauncher.xml` dans `/system/etc/permissions/`
-  - Redémarrer la machine automatiquement pour appliquer les droits.
+### Installeur (`install.bat`)
+
+Pour lancer l'installation, exécuter le script `install.bat`.
+Le script va :
+- Transférer l'APK dans la partition système (`/system/priv-app/`)
+- Copier le fichier des permissions `privapp-permissions-carlauncher.xml` dans `/system/etc/permissions/`
+- Redémarrer la machine automatiquement pour appliquer les droits.
 
 ### Vérification de l'installation
 
@@ -148,12 +142,12 @@ Une fois l'appareil redémarré, il est important de vérifier qu'Android a bien
 
 Pour s'assurer que l'installation en `priv-app` a fonctionné :
 
-1. Sur l'autoradio (ou l'émulateur), allez dans les **Paramètres Android**.
-2. Ouvrez le menu **Applications** (ou *Toutes les applications*).
-3. Cherchez et sélectionnez l'application **CarLauncher**.
-4. Observez le bouton **Désinstaller** :
-- S'il est **grisé, absent, ou remplacé par "Désactiver"** : Félicitations, l'installation a réussi ! L'application fait désormais partie intégrante du système d'usine de l'autoradio.
-- S'il est cliquable normalement (et permet de supprimer l'appli) : L'installation a échoué, l'application est installée de manière classique. Vérifiez les logs du script `install.bat` pour voir où la copie a bloqué.
+1. Sur l'autoradio (ou l'émulateur), aller dans les **Paramètres Android**.
+2. Ouvrir le menu **Applications** (ou *Toutes les applications*).
+3. Chercher et sélectionner l'application **CarLauncher**.
+4. Observer le bouton **Désinstaller** :
+- S'il est **grisé, absent, ou remplacé par "Désactiver"** : L'installation a réussi, l'application fait désormais partie intégrante du système d'usine.
+- S'il est cliquable normalement (et permet de supprimer l'application) : L'installation a échoué, l'application est installée de manière classique. Vérifier les logs du script `install.bat` pour identifier le blocage lors de la copie.
 
 ## Simulation et Tests ADB (Télémétrie & Veille)
 
@@ -166,11 +160,12 @@ adb shell am broadcast -a com.qf.action.ACC_ON
 ```
 
 * **Désactiver le contact (ACC OFF) :**
+
 ```bash
 adb shell am broadcast -a com.qf.action.ACC_OFF
 ```
 
-* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2000 RPM) : :**
+* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2200 RPM) :**
 
 ```bash
 adb shell am broadcast -a com.qf.vehicle.action.DATA_SHARE --ei speed 60 --ei rpm 2200
