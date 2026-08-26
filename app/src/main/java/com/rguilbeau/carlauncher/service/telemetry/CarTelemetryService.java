@@ -126,6 +126,10 @@ public class CarTelemetryService extends Service {
      * Met à jour l'état interne et notifie tous les abonnés.
      */
     private void handleAccOnEvent() {
+        currentSpeed = 0;
+        currentRpm = 0;
+        notifyTelemetry(currentSpeed, currentRpm);
+
         isAccOn = true;
         notifyAccChanged(true);
     }
@@ -136,10 +140,6 @@ public class CarTelemetryService extends Service {
      * et notifie tous les abonnés de ces changements.
      */
     private void handleAccOffEvent() {
-        currentSpeed = 0;
-        currentRpm = 0;
-        notifyTelemetry(currentSpeed, currentRpm);
-
         isAccOn = false;
         notifyAccChanged(false);
     }

@@ -55,6 +55,7 @@ public class NotificationService extends NotificationListenerService {
                         String eta = parts[2].trim();
 
                         eta = eta.replaceAll("GMT\\+\\d+", "")
+                                .replaceAll("Arrivée\\s*:", "")
                                 .replace("ETA", "")
                                 .trim();
 
