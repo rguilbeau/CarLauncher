@@ -12,7 +12,9 @@
     <!-- Permission privilégiée (priv-app) -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:ignore="ProtectedPermissions" />
-
+    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ADD_TRUSTED_DISPLAY" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.CAPTURE_VIDEO_OUTPUT" tools:ignore="ProtectedPermissions" />
     <!-- Rappels importants pour le déploiement :
     - Permissions système privilégiées (ProtectedPermissions) :
         En cas d'ajout d'une nouvelle permission protégée (comme WRITE_SECURE_SETTINGS ou INSTALL_PACKAGES),
