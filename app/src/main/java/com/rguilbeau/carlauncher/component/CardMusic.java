@@ -15,7 +15,7 @@ import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -34,6 +34,7 @@ import com.rguilbeau.carlauncher.component.button_strategy.ButtonStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;
 import java.util.Objects;
@@ -239,7 +240,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
             cardRoot.setOnClickListener(this);
             cardRoot.setOnLongClickListener(this);
         } else {
-            Log.e(TAG, "ID card_root non trouvé dans CardMusic");
+            CarLog.e(TAG, "ID card_root non trouvé dans CardMusic");
         }
 
 //        // --- DEBUT TEST VISUEL BOUCLE ---
@@ -293,9 +294,9 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 updateActiveMediaController(controllers);
                 mediaSessionManager.addOnActiveSessionsChangedListener(sessionsChangedListener, notificationServiceComponent);
             } catch (SecurityException e) {
-                Log.e(TAG, "SecurityException: Permission d'accès aux notifications manquante", e);
+                CarLog.e(TAG, "SecurityException: Permission d'accès aux notifications manquante", e);
             } catch (Exception e) {
-                Log.e(TAG, "Erreur lors de l'initialisation des sessions média actives", e);
+                CarLog.e(TAG, "Erreur lors de l'initialisation des sessions média actives", e);
             }
         }
     }
@@ -477,7 +478,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de l'exécution de lecture/pause", e);
+            CarLog.e(TAG, "Erreur lors de l'exécution de lecture/pause", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -494,7 +495,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors du passage à la piste suivante", e);
+            CarLog.e(TAG, "Erreur lors du passage à la piste suivante", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -511,7 +512,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors du passage à la piste précédente", e);
+            CarLog.e(TAG, "Erreur lors du passage à la piste précédente", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -531,7 +532,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
             try {
                 mediaSessionManager.removeOnActiveSessionsChangedListener(sessionsChangedListener);
             } catch (Exception e) {
-                Log.e(TAG, "Erreur lors du retrait du listener de sessions", e);
+                CarLog.e(TAG, "Erreur lors du retrait du listener de sessions", e);
             }
         }
     }

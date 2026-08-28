@@ -31,6 +31,16 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
+        <ImageView
+            android:id="@+id/btnLogViewer"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="@dimen/_12sdp"
+            android:src="@drawable/ic_button_debug"/>
+
         <!-- Bouton mise à jour (En bas) -->
         <ImageView
             android:id="@+id/btnUpdate"

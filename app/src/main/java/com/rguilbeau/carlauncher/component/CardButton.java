@@ -4,7 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -18,6 +18,7 @@ import com.rguilbeau.carlauncher.component.button_strategy.AppDrawerStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ButtonStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.DayNightStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Composant d'interface utilisateur autonome offrant une carte cliquable et personnalisable.
@@ -77,7 +78,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
 
                 a.recycle();
             } catch (Exception e) {
-                Log.e(TAG, "Error extracting custom attributes from XML", e);
+                CarLog.e(TAG, "Error extracting custom attributes from XML", e);
             }
         }
 
@@ -105,7 +106,7 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Error applying visual attributes to CardButton views", e);
+            CarLog.e(TAG, "Error applying visual attributes to CardButton views", e);
         }
 
         // Sécurisation de la chaîne pour éviter les NullPointerException lors du contrôle du type
@@ -131,10 +132,10 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
                 root.setOnClickListener(this);
                 root.setOnLongClickListener(this);
             } else {
-                Log.e(TAG, "ID card_root not found (CardButton)");
+                CarLog.e(TAG, "ID card_root not found (CardButton)");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error during button strategy initialization", e);
+            CarLog.e(TAG, "Error during button strategy initialization", e);
         }
     }
 

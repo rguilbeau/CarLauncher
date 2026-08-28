@@ -8,7 +8,7 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.util.Log;
+
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
@@ -18,10 +18,10 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
-import com.rguilbeau.carlauncher.manager.UncaughtExceptionLoggerManager;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.TripService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Activité principale du Car Launcher.
@@ -101,8 +101,6 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        UncaughtExceptionLoggerManager.showLastCrash(this);
-
         autoPlayManager = new AutoPlayManager(this);
 
         // Connexion au service CANbus pour écouter l'allumage du contact
@@ -127,7 +125,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     @Override
     public void onAccStateChanged(boolean isAccOn) {
         if (isAccOn) {
-            Log.i(TAG, "Contact mis (ACC_ON) - Lancement de l'Autoplay");
+            CarLog.i(TAG, "Contact mis (ACC_ON) - Lancement de l'Autoplay");
             if (autoPlayManager != null) {
                 autoPlayManager.startAutoplayDelayed();
             }
@@ -168,7 +166,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
             Intent intent = new Intent(this, TripService.class);
             startService(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start TripService", e);
+            CarLog.e(TAG, "Failed to start TripService", e);
         }
     }
 
@@ -209,7 +207,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
                             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             );
         } catch (Exception e) {
-            Log.e(TAG, "Error applying immersive mode", e);
+            CarLog.e(TAG, "Error applying immersive mode", e);
         }
     }
 

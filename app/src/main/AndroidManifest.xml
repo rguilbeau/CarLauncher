@@ -53,7 +53,12 @@
         </activity>
 
         <!-- Activité affichant le tiroir d'applications (grille de toutes les applications installées) -->
-        <activity android:name=".AppDrawerActivity" />
+        <activity android:name=".AppDrawerActivity"
+            android:noHistory="true"/>
+
+        <!-- Activité affichant les logs de l'application -->
+        <activity android:name=".LogViewerActivity"
+            android:noHistory="true"/>
 
         <!-- Service d'écoute des notifications système : intercepte les contrôles média (Spotify, etc.) et les données Google Maps -->
         <service

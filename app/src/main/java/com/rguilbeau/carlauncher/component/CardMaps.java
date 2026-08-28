@@ -8,7 +8,7 @@ import android.content.IntentFilter;
 import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -21,6 +21,7 @@ import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Composant d'interface utilisateur affichant la carte dédiée à Google Maps.
@@ -122,7 +123,7 @@ public class CardMaps extends FrameLayout implements View.OnClickListener {
         if (root != null) {
             root.setOnClickListener(this);
         } else {
-            Log.e(TAG, "ID card_maps_root not found (CardMaps)");
+            CarLog.e(TAG, "ID card_maps_root not found (CardMaps)");
         }
     }
 
@@ -172,10 +173,10 @@ public class CardMaps extends FrameLayout implements View.OnClickListener {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(launchIntent);
             } else {
-                Log.e(TAG, "Impossible d'ouvrir Google Maps : l'application n'est pas installée.");
+                CarLog.e(TAG, "Impossible d'ouvrir Google Maps : l'application n'est pas installée.");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors du lancement de Maps : " + e.getMessage());
+            CarLog.e(TAG, "Erreur lors du lancement de Maps : " + e.getMessage());
         }
     }
 }

@@ -2,9 +2,10 @@ package com.rguilbeau.carlauncher.component.button_strategy;
 
 import android.content.Context;
 import android.content.Intent;
-import android.util.Log;
+
 
 import com.rguilbeau.carlauncher.AppDrawerActivity;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Stratégie de comportement pour le bouton principal ouvrant le tiroir d'applications (App Drawer).
@@ -42,7 +43,7 @@ public class AppDrawerStrategy implements ButtonStrategy {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to launch AppDrawerActivity", e);
+            CarLog.e(TAG, "Failed to launch AppDrawerActivity", e);
         }
     }
 

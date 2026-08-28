@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -21,6 +21,7 @@ import androidx.annotation.Nullable;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.provider.apps.AppInfo;
 import com.rguilbeau.carlauncher.provider.apps.AppProvider;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;
 
@@ -90,7 +91,7 @@ public class ShortcutStrategy implements ButtonStrategy {
                 Toast.makeText(context, "Application non installée", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to launch application for shortcut type: " + shortcutType, e);
+            CarLog.e(TAG, "Failed to launch application for shortcut type: " + shortcutType, e);
             Toast.makeText(context, "Erreur lors du lancement de l'application", Toast.LENGTH_SHORT).show();
         }
     }
@@ -167,7 +168,7 @@ public class ShortcutStrategy implements ButtonStrategy {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 
         } catch (Exception e) {
-            Log.e(TAG, "Error while loading or displaying installed applications", e);
+            CarLog.e(TAG, "Error while loading or displaying installed applications", e);
             Toast.makeText(context, "Impossible de charger la liste des applications", Toast.LENGTH_SHORT).show();
         }
     }

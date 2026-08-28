@@ -5,7 +5,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
-import android.util.Log;
+
+
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -58,7 +60,7 @@ public class AppProvider {
             Collections.sort(appList);
 
         } catch (Exception e) {
-            Log.e(TAG, "Error while loading installed applications", e);
+            CarLog.e(TAG, "Error while loading installed applications", e);
         }
         return appList;
     }

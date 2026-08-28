@@ -8,7 +8,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -21,6 +20,7 @@ import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import org.json.JSONObject;
 
@@ -256,17 +256,17 @@ public class CardWeather extends FrameLayout implements Runnable {
                             }
                         })
                         .addOnFailureListener(e -> {
-                            Log.e(TAG, "Error obtaining last location", e);
+                            CarLog.e(TAG, "Error obtaining last location", e);
                             scheduleNextUpdate(true);
                         });
             } else {
-                Log.w(TAG, "Location permission missing, waiting for MainActivity to handle it.");
+                CarLog.w(TAG, "Location permission missing, waiting for MainActivity to handle it.");
                 if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
                 if (txtCity != null) txtCity.setText("Recherche GPS...");
                 scheduleNextUpdate(true);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error executing weather update cycle", e);
+            CarLog.e(TAG, "Error executing weather update cycle", e);
             scheduleNextUpdate(true);
         }
     }
@@ -302,7 +302,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                     String cityName = address.getLocality() != null ? address.getLocality() : address.getSubAdminArea();
 
                     if (cityName != null) {
-                        Log.i(TAG, "City found: " + cityName);
+                        CarLog.i(TAG, "City found: " + cityName);
 
                         post(() -> {
                             if (txtCity != null) {
@@ -312,7 +312,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                     }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error retrieving city name via Geocoder", e);
+                CarLog.e(TAG, "Error retrieving city name via Geocoder", e);
             }
         });
     }
@@ -331,7 +331,7 @@ public class CardWeather extends FrameLayout implements Runnable {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e(TAG, "Failed to execute Open-Meteo API request (Network issue?)", e);
+                CarLog.e(TAG, "Failed to execute Open-Meteo API request (Network issue?)", e);
                 scheduleNextUpdate(true);
             }
 
@@ -370,11 +370,11 @@ public class CardWeather extends FrameLayout implements Runnable {
                         scheduleNextUpdate(false);
 
                     } catch (Exception e) {
-                        Log.e(TAG, "Error parsing weather JSON response", e);
+                        CarLog.e(TAG, "Error parsing weather JSON response", e);
                         scheduleNextUpdate(true);
                     }
                 } else {
-                    Log.e(TAG, "Server error during weather request. Code: " + response.code());
+                    CarLog.e(TAG, "Server error during weather request. Code: " + response.code());
                     scheduleNextUpdate(true);
                 }
             }
@@ -408,7 +408,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                 return WeatherTime.NIGHT;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de l'analyse des horaires soleil", e);
+            CarLog.e(TAG, "Erreur lors de l'analyse des horaires soleil", e);
             return WeatherTime.DAY;
         }
     }

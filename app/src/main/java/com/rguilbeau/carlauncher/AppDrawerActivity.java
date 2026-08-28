@@ -1,8 +1,9 @@
 package com.rguilbeau.carlauncher;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.util.Log;
+
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -16,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.rguilbeau.carlauncher.selfupdate.GitHubUpdater;
 import com.rguilbeau.carlauncher.selfupdate.UpdateListener;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 import com.rguilbeau.carlauncher.view.AppDrawerAdapter;
 import com.rguilbeau.carlauncher.provider.apps.AppInfo;
 import com.rguilbeau.carlauncher.provider.apps.AppProvider;
@@ -56,6 +58,11 @@ public class AppDrawerActivity extends AppCompatActivity {
                 btnUpdate.setOnClickListener(v -> showUpdateDialog());
             }
 
+            ImageView btnLogViewer = findViewById(R.id.btnLogViewer);
+            if (btnLogViewer != null) {
+                btnLogViewer.setOnClickListener(v -> showLogViewer());
+            }
+
             RecyclerView rvApps = findViewById(R.id.rvApps);
             if (rvApps != null) {
                 rvApps.setLayoutManager(new GridLayoutManager(this, 5));
@@ -65,7 +72,7 @@ public class AppDrawerActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Error initializing AppDrawer UI", e);
+            CarLog.e(TAG, "Error initializing AppDrawer UI", e);
         }
     }
 
@@ -156,5 +163,13 @@ public class AppDrawerActivity extends AppCompatActivity {
         });
 
         updater.update();
+    }
+
+    /**
+     * Affiche l'activité permettant de lire les logs de l'application
+     */
+    private void showLogViewer() {
+        Intent intent = new Intent(AppDrawerActivity.this, LogViewerActivity.class);
+        startActivity(intent);
     }
 }

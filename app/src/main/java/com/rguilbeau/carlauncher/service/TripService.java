@@ -12,13 +12,14 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.util.Log;
+
 
 import androidx.annotation.NonNull;
 
 import com.rguilbeau.carlauncher.manager.PermissionManager;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -130,7 +131,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
             telemetryService.addListener(TripService.this);
-            Log.d(TAG, "TripService connecté au CANbus.");
+            CarLog.d(TAG, "TripService connecté au CANbus.");
         }
 
         @Override
@@ -159,7 +160,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur init GPS dans TripService", e);
+            CarLog.e(TAG, "Erreur init GPS dans TripService", e);
         }
     }
 
@@ -176,21 +177,21 @@ public class TripService extends Service implements LocationListener, CarTelemet
         long now = System.currentTimeMillis();
 
         if (accOn) {
-            Log.i(TAG, "▶️ DÉBUT DU TRAJET : Contact allumé.");
-
             long lastOffTime = prefs.getLong(KEY_LAST_ACC_OFF, now);
             checkSmartReset(now, now - lastOffTime);
 
             lastTickTime = now;
-        } else {
-            Log.i(TAG, "⏹️ FIN DU TRAJET : Contact coupé.");
 
+            CarLog.i(TAG, "DÉBUT DU TRAJET : Contact allumé.");
+        } else {
             if (lastTickTime > 0) {
                 accumulateTime(now - lastTickTime);
                 lastTickTime = 0;
             }
 
             prefs.edit().putLong(KEY_LAST_ACC_OFF, now).apply();
+
+            CarLog.i(TAG, "FIN DU TRAJET : Contact coupé.");
         }
     }
 
@@ -239,12 +240,10 @@ public class TripService extends Service implements LocationListener, CarTelemet
                         .putString(KEY_SAVED_DATE, today)
                         .apply();
 
-                Log.i(TAG, "♻️ Smart Reset exécuté : données journalières réinitialisées.");
-            } else {
-                prefs.edit().putString(KEY_SAVED_DATE, today).apply();
+                CarLog.i(TAG, "Smart Reset exécuté : données journalières réinitialisées.");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur Smart Reset", e);
+            CarLog.e(TAG, "Erreur Smart Reset", e);
         }
     }
 
@@ -282,7 +281,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 lastLocation = location;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur calcul trajet", e);
+            CarLog.e(TAG, "Erreur calcul trajet", e);
         }
     }
 
@@ -316,7 +315,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 locationManager.removeUpdates(this);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur nettoyage onDestroy", e);
+            CarLog.e(TAG, "Erreur nettoyage onDestroy", e);
         }
     }
 

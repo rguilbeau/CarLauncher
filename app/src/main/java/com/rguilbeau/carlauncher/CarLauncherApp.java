@@ -2,7 +2,7 @@ package com.rguilbeau.carlauncher;
 
 import android.app.Application;
 
-import com.rguilbeau.carlauncher.manager.UncaughtExceptionLoggerManager;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Classe Application globale du projet Car Launcher.
@@ -19,6 +19,6 @@ public class CarLauncherApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-        UncaughtExceptionLoggerManager.init(this);
+        CarLog.init(this);
     }
 }

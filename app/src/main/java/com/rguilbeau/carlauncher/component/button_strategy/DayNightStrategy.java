@@ -4,8 +4,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Settings;
-import android.util.Log;
+
 import android.widget.Toast;
+
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Stratégie de comportement pour un bouton permettant de basculer la luminosité du système entre le niveau minimal et maximal.
@@ -70,7 +72,7 @@ public class DayNightStrategy implements ButtonStrategy {
             Settings.System.putInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, newBrightness);
 
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors du basculement de la luminosité", e);
+            CarLog.e(TAG, "Erreur lors du basculement de la luminosité", e);
         }
     }
 
