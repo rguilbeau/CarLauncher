@@ -3,7 +3,9 @@ package com.rguilbeau.carlauncher;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
-
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -23,13 +25,17 @@ import com.rguilbeau.carlauncher.provider.apps.AppInfo;
 import com.rguilbeau.carlauncher.provider.apps.AppProvider;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Activité chargée d'afficher la grille complète des applications installées sur le système (App Drawer).
+ * Gère le chargement asynchrone des applications pour éviter les blocages de l'interface graphique.
  *
  * @author rguilbeau
  */
 public class AppDrawerActivity extends AppCompatActivity {
+
     /**
      * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
      */
@@ -37,8 +43,7 @@ public class AppDrawerActivity extends AppCompatActivity {
 
     /**
      * Initialise l'interface de la grille d'applications.
-     * Configure les actions des boutons de retour et de mise à jour,
-     * et charge la liste des applications installées dans le RecyclerView.
+     * Configure les actions des boutons et lance le chargement asynchrone des applications.
      *
      * @param savedInstanceState L'état précédemment sauvegardé de l'activité, si existant.
      */
@@ -64,16 +69,46 @@ public class AppDrawerActivity extends AppCompatActivity {
             }
 
             RecyclerView rvApps = findViewById(R.id.rvApps);
-            if (rvApps != null) {
+            ProgressBar progressLoadingApps = findViewById(R.id.progressLoadingApps);
+
+            if (rvApps != null && progressLoadingApps != null) {
                 rvApps.setLayoutManager(new GridLayoutManager(this, 5));
-                List<AppInfo> installedApps = AppProvider.getApps(this);
-                AppDrawerAdapter adapter = new AppDrawerAdapter(this, installedApps);
-                rvApps.setAdapter(adapter);
+                loadAppsAsynchronously(rvApps, progressLoadingApps);
             }
 
         } catch (Exception e) {
-            CarLog.e(TAG, "Error initializing AppDrawer UI", e);
+            CarLog.e(TAG, "Erreur lors de l'initialisation de l'AppDrawer", e);
         }
+    }
+
+    /**
+     * Exécute la récupération des applications installées sur un thread d'arrière-plan,
+     * puis met à jour l'interface utilisateur une fois le processus terminé.
+     *
+     * @param rvApps              Le composant RecyclerView devant recevoir la liste.
+     * @param progressLoadingApps Le composant ProgressBar à masquer à la fin du chargement.
+     */
+    private void loadAppsAsynchronously(RecyclerView rvApps, ProgressBar progressLoadingApps) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Handler handler = new Handler(Looper.getMainLooper());
+
+        executor.execute(() -> {
+            try {
+                // Opération lourde traitée en arrière-plan
+                List<AppInfo> installedApps = AppProvider.getApps(AppDrawerActivity.this);
+
+                // Retour sur le thread principal pour modifier l'interface
+                handler.post(() -> {
+                    AppDrawerAdapter adapter = new AppDrawerAdapter(AppDrawerActivity.this, installedApps);
+                    rvApps.setAdapter(adapter);
+
+                    progressLoadingApps.setVisibility(View.GONE);
+                    rvApps.setVisibility(View.VISIBLE);
+                });
+            } catch (Exception e) {
+                CarLog.e(TAG, "Erreur lors de la récupération asynchrone des applications", e);
+            }
+        });
     }
 
     /**
@@ -111,8 +146,7 @@ public class AppDrawerActivity extends AppCompatActivity {
         GitHubUpdater updater = new GitHubUpdater(this, new UpdateListener() {
 
             /**
-             * Appelée lorsque le statut de l'opération change (ex: recherche d'une nouvelle version, début du téléchargement).
-             * Met à jour le texte principal de la boîte de dialogue.
+             * Appelée lorsque le statut de l'opération change.
              *
              * @param status Le message de statut actuel.
              */
@@ -123,9 +157,8 @@ public class AppDrawerActivity extends AppCompatActivity {
 
             /**
              * Appelée régulièrement pendant le téléchargement du fichier de mise à jour.
-             * Fait passer la barre de progression en mode déterminé (si besoin) et affiche le pourcentage d'avancement.
              *
-             * @param progress Le pourcentage de progression (de 0 à 100).
+             * @param progress Le pourcentage de progression.
              */
             @Override
             public void onProgress(int progress) {
@@ -137,8 +170,7 @@ public class AppDrawerActivity extends AppCompatActivity {
             }
 
             /**
-             * Appelée en cas d'échec (problème réseau, fichier introuvable, erreur d'écriture).
-             * Affiche le message d'erreur en rouge, masque la barre de progression et permet à l'utilisateur de fermer la fenêtre.
+             * Appelée en cas d'échec.
              *
              * @param error Le message décrivant l'erreur.
              */
@@ -146,13 +178,12 @@ public class AppDrawerActivity extends AppCompatActivity {
             public void onError(String error) {
                 statusText.setText("Erreur : " + error);
                 statusText.setTextColor(android.graphics.Color.RED);
-                progressBar.setVisibility(android.view.View.GONE);
+                progressBar.setVisibility(View.GONE);
                 dialog.setCancelable(true);
             }
 
             /**
-             * Appelée lorsque le téléchargement est terminé et que la mise à jour est prête.
-             * Affiche un message de succès, remplit la jauge à 100% et déverrouille la fermeture de la fenêtre.
+             * Appelée lorsque le téléchargement est terminé.
              */
             @Override
             public void onSuccess() {
@@ -166,7 +197,7 @@ public class AppDrawerActivity extends AppCompatActivity {
     }
 
     /**
-     * Affiche l'activité permettant de lire les logs de l'application
+     * Affiche l'activité permettant de lire les journaux d'événements (logs).
      */
     private void showLogViewer() {
         Intent intent = new Intent(AppDrawerActivity.this, LogViewerActivity.class);
