@@ -22,6 +22,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -103,6 +104,11 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
      * Vue racine sous forme de CardView sur laquelle est appliquée la couleur de fond dynamique.
      */
     private CardView cardRoot;
+
+    /**
+     * Zone cliquable regroupant le titre et l'artiste (permet d'ouvrir l'app musicale).
+     */
+    private final LinearLayout layoutTextZone;
 
     /**
      * Bouton ou zone cliquable déclenchant la lecture ou la pause.
@@ -189,6 +195,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         txtSongTitle = findViewById(R.id.txtSongTitle);
         txtArtist = findViewById(R.id.txtArtist);
         imgAlbum = findViewById(R.id.imgAlbum);
+        layoutTextZone = findViewById(R.id.layoutTextZone);
 
         btnPlay = findViewById(R.id.btnPlay);
         btnNext = findViewById(R.id.btnNext);
@@ -235,12 +242,14 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
         if (btnPrev != null) btnPrev.setOnClickListener(v -> previous());
 
         cardRoot = findViewById(R.id.card_root);
-        if (cardRoot != null) {
-            buttonStrategy = new ShortcutStrategy("music");
-            cardRoot.setOnClickListener(this);
-            cardRoot.setOnLongClickListener(this);
+        buttonStrategy = new ShortcutStrategy("music");
+
+        // On applique les listeners de clic uniquement sur la zone supérieure (TextZone)
+        if (layoutTextZone != null) {
+            layoutTextZone.setOnClickListener(this);
+            layoutTextZone.setOnLongClickListener(this);
         } else {
-            CarLog.e(TAG, "ID card_root non trouvé dans CardMusic");
+            CarLog.e(TAG, "ID layoutTextZone non trouvé dans CardMusic");
         }
 
 //        // --- DEBUT TEST VISUEL BOUCLE ---
@@ -538,7 +547,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
     }
 
     /**
-     * Intercepte le clic simple sur la carte et le délègue à la stratégie de raccourci.
+     * Intercepte le clic simple sur la zone supérieure de la carte et le délègue à la stratégie de raccourci.
      *
      * @param v La vue cliquée.
      */
@@ -548,7 +557,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
     }
 
     /**
-     * Intercepte l'appui long sur la carte et le délègue à la stratégie de raccourci.
+     * Intercepte l'appui long sur la zone supérieure de la carte et le délègue à la stratégie de raccourci.
      *
      * @param v La vue ayant reçu l'appui long.
      * @return true si l'événement a été consommé, false sinon.
