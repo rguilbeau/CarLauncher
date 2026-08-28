@@ -1,6 +1,7 @@
 package com.rguilbeau.carlauncher;
 
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -128,12 +129,16 @@ public class LogViewerActivity extends AppCompatActivity {
                     imageView.setImageBitmap(qrCode);
                     imageView.setPadding(32, 32, 32, 32);
 
-                    new AlertDialog.Builder(LogViewerActivity.this)
+                    AlertDialog dialog = new AlertDialog.Builder(LogViewerActivity.this)
                             .setTitle("Exportation réussie")
                             .setMessage("Scannez ce code QR pour télécharger le fichier ZIP (48h).\n\nLien direct : " + url)
                             .setView(imageView)
                             .setPositiveButton("Fermer", null)
                             .show();
+
+                    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+                    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+                    dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
                 }
 
                 @Override
@@ -141,11 +146,15 @@ public class LogViewerActivity extends AppCompatActivity {
                     btnExportLogs.setEnabled(true);
                     btnExportLogs.setText("Exporter");
 
-                    new AlertDialog.Builder(LogViewerActivity.this)
+                    AlertDialog dialog = new AlertDialog.Builder(LogViewerActivity.this)
                             .setTitle("Erreur d'exportation")
                             .setMessage(message)
                             .setPositiveButton("OK", null)
                             .show();
+
+                    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+                    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+                    dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
                 }
             });
         });
@@ -156,12 +165,16 @@ public class LogViewerActivity extends AppCompatActivity {
      */
     private void setupClearButton() {
         btnClearLogs.setOnClickListener(v -> {
-            new AlertDialog.Builder(this)
+            AlertDialog dialog = new AlertDialog.Builder(this)
                     .setTitle("Vider les journaux")
                     .setMessage("Êtes-vous sûr de vouloir supprimer définitivement tous les historiques d'événements ?")
-                    .setPositiveButton("Supprimer", (dialog, which) -> clearLogs())
+                    .setPositiveButton("Supprimer", (dialogInterface, which) -> clearLogs())
                     .setNegativeButton("Annuler", null)
                     .show();
+
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
         });
     }
 
