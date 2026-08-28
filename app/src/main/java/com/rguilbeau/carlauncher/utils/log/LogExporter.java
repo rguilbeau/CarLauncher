@@ -36,13 +36,36 @@ import okhttp3.Response;
  * et génère un code QR contenant le lien de téléchargement direct.
  */
 public class LogExporter {
-
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "LogExporter";
+
+    /**
+     * Point de terminaison (Endpoint) de l'API du service d'hébergement temporaire.
+     */
     private static final String UPLOAD_URL = "https://tmpfiles.org/api/v1/upload";
 
+    /**
+     * Contexte de l'application, nécessaire pour accéder au système de fichiers (cache et données internes).
+     */
     private final Context context;
+
+    /**
+     * Client HTTP gérant l'envoi du fichier compressé vers le serveur distant.
+     */
     private final OkHttpClient httpClient;
+
+    /**
+     * Exécuteur mono-thread dédié aux opérations lourdes en arrière-plan (compression et réseau)
+     * afin de prévenir le blocage de l'interface graphique.
+     */
     private final ExecutorService executor;
+
+    /**
+     * Gestionnaire attaché au fil d'exécution principal (UI thread),
+     * utilisé pour redescendre les résultats ou les erreurs vers l'interface utilisateur.
+     */
     private final Handler mainHandler;
 
     /**

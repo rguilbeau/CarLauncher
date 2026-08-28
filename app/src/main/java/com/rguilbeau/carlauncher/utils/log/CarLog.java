@@ -32,9 +32,6 @@ public class CarLog {
      * Indicateur de l'état d'initialisation du service de journalisation.
      */
     private static boolean isInitialized = false;
-
-    public static String LOG_EXTENSION = ".log";
-
     /**
      * Constructeur privé pour empêcher l'instanciation de cette classe utilitaire.
      */
