@@ -189,7 +189,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 lastTickTime = 0;
             }
 
-            prefs.edit().putLong(KEY_LAST_ACC_OFF, now).apply();
+            prefs.edit().putLong(KEY_LAST_ACC_OFF, now).commit();
 
             CarLog.i(TAG, "FIN DU TRAJET : Contact coupé.");
         }
