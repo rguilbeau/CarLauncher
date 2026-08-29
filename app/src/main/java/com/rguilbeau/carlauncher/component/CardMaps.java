@@ -173,10 +173,10 @@ public class CardMaps extends FrameLayout implements View.OnClickListener {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(launchIntent);
             } else {
-                CarLog.e(TAG, "Impossible d'ouvrir Google Maps : l'application n'est pas installée.");
+                CarLog.e(TAG, "Unable to open Google Maps: app is not installed.");
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors du lancement de Maps : " + e.getMessage());
+            CarLog.e(TAG, "Error launching Google Maps: " + e.getMessage());
         }
     }
 }

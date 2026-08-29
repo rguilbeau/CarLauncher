@@ -124,7 +124,7 @@ public class CardWeather extends FrameLayout implements Runnable {
     /**
      * Gestionnaire système vérifiant l'état de la connexion Internet de l'appareil.
      */
-    private final ConnectivityManager connectivityManager;
+    private ConnectivityManager connectivityManager;
 
     /**
      * Callback déclenché par le système lorsque la connexion Internet devient disponible.
@@ -261,9 +261,7 @@ public class CardWeather extends FrameLayout implements Runnable {
             lastKnownLocation.setLatitude(lat);
             lastKnownLocation.setLongitude(lon);
 
-            CarLog.i(TAG, "Position chargée depuis les SharedPreferences.");
-        } else {
-            CarLog.i(TAG, "Aucune position enregistrée dans les SharedPreferences.");
+            CarLog.i(TAG, "Location loaded from SharedPreferences.");
         }
     }
 
@@ -308,7 +306,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                 // Si on n'avait vraiment AUCUNE position (même pas dans les SharedPreferences),
                 // on force un rafraîchissement météo immédiat dès le premier fix.
                 if (wasNull && lastKnownLocation != null) {
-                    CarLog.i(TAG, "Premier fix GPS obtenu. Lancement immédiat de la météo.");
+                    CarLog.i(TAG, "First GPS fix obtained. Launching weather update immediately.");
                     weatherHandler.removeCallbacks(CardWeather.this);
                     weatherHandler.post(CardWeather.this);
                 }
@@ -332,7 +330,7 @@ public class CardWeather extends FrameLayout implements Runnable {
      */
     private void executeWeatherUpdate() {
         if (lastKnownLocation == null) {
-            CarLog.w(TAG, "En attente du fix GPS...");
+            CarLog.w(TAG, "Waiting for GPS fix...");
             if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
             if (txtCity != null) txtCity.setText("Recherche position...");
             scheduleNextUpdate();
@@ -377,7 +375,7 @@ public class CardWeather extends FrameLayout implements Runnable {
         if (isWaitingForNetwork || connectivityManager == null) return;
 
         isWaitingForNetwork = true;
-        CarLog.i(TAG, "Pas d'Internet. Abonnement à l'attente du réseau...");
+        CarLog.i(TAG, "No Internet connection. Subscribing to network availability events...");
         if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
         if (txtCity != null) txtCity.setText("Attente de connexion...");
 
@@ -392,7 +390,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                 isWaitingForNetwork = false;
                 connectivityManager.unregisterNetworkCallback(this);
 
-                CarLog.i(TAG, "Internet de retour ! Relance du fetch météo.");
+                CarLog.i(TAG, "Internet connection restored! Relaunching weather fetch.");
                 weatherHandler.post(() -> executeWeatherUpdate());
             }
         };
@@ -522,7 +520,7 @@ public class CardWeather extends FrameLayout implements Runnable {
                 return WeatherTime.NIGHT;
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de l'analyse des horaires soleil", e);
+            CarLog.e(TAG, "Error parsing sunrise/sunset times", e);
             return WeatherTime.DAY;
         }
     }

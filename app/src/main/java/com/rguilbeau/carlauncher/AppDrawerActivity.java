@@ -77,7 +77,7 @@ public class AppDrawerActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de l'initialisation de l'AppDrawer", e);
+            CarLog.e(TAG, "Error initializing the AppDrawer", e);
         }
     }
 
@@ -106,7 +106,7 @@ public class AppDrawerActivity extends AppCompatActivity {
                     rvApps.setVisibility(View.VISIBLE);
                 });
             } catch (Exception e) {
-                CarLog.e(TAG, "Erreur lors de la récupération asynchrone des applications", e);
+                CarLog.e(TAG, "Error during asynchronous app retrieval", e);
             }
         });
     }

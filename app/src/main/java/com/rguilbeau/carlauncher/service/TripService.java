@@ -129,7 +129,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
             telemetryService.addListener(TripService.this);
-            CarLog.d(TAG, "TripService connecté au CANbus.");
+            CarLog.d(TAG, "TripService connected to CANbus.");
         }
 
         @Override
@@ -153,7 +153,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this);
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur init GPS dans TripService", e);
+            CarLog.e(TAG, "Error initializing GPS", e);
         }
     }
 
@@ -185,7 +185,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
             lastTickTime = monotonicNow;
 
-            CarLog.i(TAG, "DÉBUT DU TRAJET : Contact allumé.");
+            CarLog.i(TAG, "Ignition on (ACC_ON) trip start");
         } else {
             if (lastTickTime > 0) {
                 long deltaMillis = monotonicNow - lastTickTime;
@@ -195,7 +195,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
             prefs.edit().putLong(KEY_LAST_ACC_OFF, wallTimeNow).commit();
 
-            CarLog.i(TAG, "FIN DU TRAJET : Contact coupé.");
+            CarLog.i(TAG, "Ignition off (ACC_OFF) trip end");
         }
     }
 
@@ -236,10 +236,10 @@ public class TripService extends Service implements LocationListener, CarTelemet
                         .putString(KEY_SAVED_DATE, today)
                         .apply();
 
-                CarLog.i(TAG, "Smart Reset exécuté : données journalières réinitialisées.");
+                CarLog.i(TAG, "Smart Reset executed: daily data reset.");
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur Smart Reset", e);
+            CarLog.e(TAG, "Smart Reset error", e);
         }
     }
 
@@ -276,7 +276,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 lastLocation = location;
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur calcul trajet", e);
+            CarLog.e(TAG, "Error calculating trip", e);
         }
     }
 

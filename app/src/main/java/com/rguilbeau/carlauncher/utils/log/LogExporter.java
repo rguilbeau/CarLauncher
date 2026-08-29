@@ -116,7 +116,7 @@ public class LogExporter {
 
                 uploadZipFile(zipFile, callback);
             } catch (Exception e) {
-                CarLog.e(TAG, "Erreur globale lors de l'exportation", e);
+                CarLog.e(TAG, "Global error during export", e);
                 notifyError(callback, "Erreur interne lors de la préparation : " + e.getMessage());
             }
         });
@@ -177,7 +177,7 @@ public class LogExporter {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                CarLog.e(TAG, "Échec de la requête d'upload", e);
+                CarLog.e(TAG, "Upload request failed", e);
                 notifyError(callback, "Erreur réseau lors de l'envoi.");
             }
 
@@ -187,7 +187,7 @@ public class LogExporter {
                     String responseBody = response.body() != null ? response.body().string() : "";
 
                     if (!response.isSuccessful()) {
-                        CarLog.e(TAG, "Erreur serveur : " + response.code() + " - " + responseBody);
+                        CarLog.e(TAG, "Server error: " + response.code() + " - " + responseBody);
                         notifyError(callback, "Erreur du serveur d'hébergement (Code " + response.code() + ").");
                         return;
                     }
@@ -206,7 +206,7 @@ public class LogExporter {
                         notifyError(callback, "Le service a refusé le fichier.");
                     }
                 } catch (Exception e) {
-                    CarLog.e(TAG, "Erreur lors de la lecture de la réponse", e);
+                    CarLog.e(TAG, "Error reading response", e);
                     notifyError(callback, "Erreur de traitement de la réponse serveur.");
                 } finally {
                     response.close();
@@ -243,7 +243,7 @@ public class LogExporter {
             mainHandler.post(() -> callback.onSuccess(bitmap, url));
 
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de la génération du QR Code", e);
+            CarLog.e(TAG, "Error generating QR Code", e);
             notifyError(callback, "Erreur lors de la création du QR Code.");
         }
     }

@@ -174,7 +174,7 @@ public class AutoPlayManager {
      */
     private void startAutoplayInternal(boolean delayed) {
         if (!isRunning.compareAndSet(false, true)) {
-            CarLog.w(TAG, "Autoplay déjà en cours.");
+            CarLog.w(TAG, "Autoplay already in progress.");
             return;
         }
 
@@ -183,20 +183,20 @@ public class AutoPlayManager {
 
         final String savedPackage = getSavedMusicPackage();
         if (savedPackage.isEmpty()) {
-            CarLog.w(TAG, "Aucun package configuré.");
+            CarLog.w(TAG, "No package configured.");
             stop();
             return;
         }
 
         if (isMediaPlaying()) {
-            CarLog.i(TAG, "Un flux audio est déjà en cours de lecture. Autoplay annulé.");
+            CarLog.i(TAG, "Audio stream already playing. Autoplay canceled.");
             stop();
             return;
         }
 
         MediaController existingController = getControllerForPackage(savedPackage);
         if (existingController != null && hasValidMetadata(existingController)) {
-            CarLog.i(TAG, "Application déjà prête en arrière-plan. Lancement direct.");
+            CarLog.i(TAG, "App already ready in background. Direct launch.");
 
             boundController = existingController;
             registerControllerCallback(boundController, savedPackage);
@@ -289,7 +289,7 @@ public class AutoPlayManager {
                 }
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur vérification état de lecture", e);
+            CarLog.e(TAG, "Error checking playback state", e);
         }
         return false;
     }
@@ -304,7 +304,7 @@ public class AutoPlayManager {
         timeoutRunnable = new Runnable() {
             @Override
             public void run() {
-                CarLog.w(TAG, "Timeout atteint ! On force l'arrêt.");
+                CarLog.w(TAG, "Timeout reached! Forcing shutdown.");
                 stop();
             }
         };
@@ -327,7 +327,7 @@ public class AutoPlayManager {
                 sessionManager.addOnActiveSessionsChangedListener(sessionListener, notificationComponent);
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur enregistrement OnActiveSessionsChangedListener", e);
+            CarLog.e(TAG, "Error registering OnActiveSessionsChangedListener", e);
         }
     }
 
@@ -380,7 +380,7 @@ public class AutoPlayManager {
                 if (!isRunning.get()) return;
 
                 if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                    CarLog.i(TAG, "Lecture confirmée par le lecteur ! Fin de la séquence Autoplay.");
+                    CarLog.i(TAG, "Playback confirmed by player! End of Autoplay sequence.");
                     stop();
                 }
             }
@@ -389,7 +389,7 @@ public class AutoPlayManager {
         try {
             controller.registerCallback(controllerCallback, handler);
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur enregistrement MediaController.Callback", e);
+            CarLog.e(TAG, "Error registering MediaController.Callback", e);
         }
     }
 
@@ -402,13 +402,13 @@ public class AutoPlayManager {
     private void schedulePlay(final MediaController controller) {
         if (isPlayScheduled) return;
         isPlayScheduled = true;
-        CarLog.i(TAG, "Métadonnées validées. Programmation du PLAY dans " + POST_METADATA_DELAY_MS + "ms.");
+        CarLog.i(TAG, "Metadata validated. Scheduling PLAY in " + POST_METADATA_DELAY_MS + "ms.");
 
         if (sessionManager != null && sessionListener != null) {
             try {
                 sessionManager.removeOnActiveSessionsChangedListener(sessionListener);
             } catch (Exception e) {
-                CarLog.e(TAG, "Erreur suppression sessionListener", e);
+                CarLog.e(TAG, "Error removing sessionListener", e);
             }
             sessionListener = null;
         }
@@ -418,13 +418,13 @@ public class AutoPlayManager {
             public void run() {
                 try {
                     if (controller != null && controller.getTransportControls() != null) {
-                        CarLog.i(TAG, "Envoi de la commande PLAY. En attente de la confirmation de lecture...");
+                        CarLog.i(TAG, "Sending PLAY command. Waiting for playback confirmation...");
                         controller.getTransportControls().play();
                     } else {
                         stop();
                     }
                 } catch (Exception e) {
-                    CarLog.e(TAG, "Erreur lors de la commande play()", e);
+                    CarLog.e(TAG, "Error executing play() command", e);
                     stop();
                 }
             }
@@ -473,7 +473,7 @@ public class AutoPlayManager {
                 }
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur recherche MediaController", e);
+            CarLog.e(TAG, "Error searching for MediaController", e);
         }
         return null;
     }
@@ -527,7 +527,7 @@ public class AutoPlayManager {
 
         if (isRunning.compareAndSet(true, false)) {
             notifyListeners(false);
-            CarLog.i(TAG, "Séquence Autoplay terminée et nettoyée.");
+            CarLog.i(TAG, "Autoplay sequence completed");
         }
     }
 
@@ -542,7 +542,7 @@ public class AutoPlayManager {
                 context.startActivity(launcherIntent);
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur retour CarLauncher", e);
+            CarLog.e(TAG, "Error returning to launcher", e);
         }
     }
 
@@ -559,7 +559,7 @@ public class AutoPlayManager {
                 context.startActivity(intent);
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lancement " + packageName, e);
+            CarLog.e(TAG, "Error launching " + packageName, e);
         }
     }
 

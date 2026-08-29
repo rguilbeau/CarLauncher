@@ -72,7 +72,7 @@ public class DayNightStrategy implements ButtonStrategy {
             Settings.System.putInt(context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, newBrightness);
 
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors du basculement de la luminosité", e);
+            CarLog.e(TAG, "Error while switching brightness", e);
         }
     }
 

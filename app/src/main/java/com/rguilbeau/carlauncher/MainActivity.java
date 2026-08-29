@@ -125,7 +125,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     @Override
     public void onAccStateChanged(boolean isAccOn) {
         if (isAccOn) {
-            CarLog.i(TAG, "Contact mis (ACC_ON) - Lancement de l'Autoplay");
+            CarLog.i(TAG, "Ignition ON (ACC_ON) — Launching Autoplay");
             if (autoPlayManager != null) {
                 autoPlayManager.startAutoplayDelayed();
             }

@@ -111,7 +111,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
             Intent intent = new Intent(getContext(), CarTelemetryService.class);
             getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de la liaison au CarTelemetryService", e);
+            CarLog.e(TAG, "Error binding to CarTelemetryService", e);
         }
     }
 
@@ -134,7 +134,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
                 isBound = false;
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de la déconnexion du service", e);
+            CarLog.e(TAG, "Error disconnecting telemetry service", e);
         }
     }
 

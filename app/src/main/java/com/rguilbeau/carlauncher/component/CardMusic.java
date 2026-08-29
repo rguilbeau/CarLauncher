@@ -303,9 +303,9 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 updateActiveMediaController(controllers);
                 mediaSessionManager.addOnActiveSessionsChangedListener(sessionsChangedListener, notificationServiceComponent);
             } catch (SecurityException e) {
-                CarLog.e(TAG, "SecurityException: Permission d'accès aux notifications manquante", e);
+                CarLog.e(TAG, "SecurityException: Notification access permission missing", e);
             } catch (Exception e) {
-                CarLog.e(TAG, "Erreur lors de l'initialisation des sessions média actives", e);
+                CarLog.e(TAG, "Error initializing active media sessions", e);
             }
         }
     }
@@ -487,7 +487,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors de l'exécution de lecture/pause", e);
+            CarLog.e(TAG, "Error executing play/pause", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -504,7 +504,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors du passage à la piste suivante", e);
+            CarLog.e(TAG, "Error skipping to next track", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -521,7 +521,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
                 autoPlayManager.startAutoplay();
             }
         } catch (Exception e) {
-            CarLog.e(TAG, "Erreur lors du passage à la piste précédente", e);
+            CarLog.e(TAG, "Error skipping to previous track", e);
             if (autoPlayManager != null) autoPlayManager.startAutoplay();
         }
     }
@@ -541,7 +541,7 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
             try {
                 mediaSessionManager.removeOnActiveSessionsChangedListener(sessionsChangedListener);
             } catch (Exception e) {
-                CarLog.e(TAG, "Erreur lors du retrait du listener de sessions", e);
+                CarLog.e(TAG, "Error removing session listener", e);
             }
         }
     }
