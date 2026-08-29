@@ -2,6 +2,16 @@
 
 ![Aperçu de CarLauncher](docs/preview.png)
 
+
+## Fonctionnalités Principales
+- **Tableau de bord dynamique :** L'interface est construite autour d'un système de "cartes" autonomes s'actualisant en temps réel. Elles regroupent toutes les informations essentielles à la conduite : vitesse et régime moteur (RPM), temps et distance du trajet, météo locale, guidage GPS en cours, et lecteur multimédia.
+
+- **Reprise automatique de la musique (Autoplay) :** Au démarrage du véhicule, le launcher force automatiquement la reprise de la lecture en arrière-plan sur le lecteur multimédia défini par l'utilisateur dans les paramètres (Spotify, YouTube Music, etc.), sans nécessiter la moindre action manuelle.
+
+- **Gestion intelligente des trajets (Smart Reset) :** Le système surveille les actions de contact du véhicule (allumage et coupure du moteur) pour enregistrer de manière autonome les sessions de conduite. Un algorithme de Smart Reset se charge de réinitialiser intelligemment les statistiques journalières (kilomètres parcourus, temps de conduite) entre deux trajets éloignés dans le temps.
+
+- **Diagnostic et Exportation des logs par QR Code :** Une vue dédiée (LogViewerActivity) permet de consulter les journaux de l'application. Pour éviter la saturation de la mémoire, un système de rotation ne conserve que les événements récents. Ces logs peuvent être exportés vers un serveur pour diagnostic : l'application génère alors un QR Code à l'écran permettant de récupérer instantanément les données sur un smartphone.
+
 ## Architecture
 ```mermaid
 graph TD
@@ -17,8 +27,10 @@ graph TD
         SERVICE_NOTIF["Service Notification<br/>(Musique, Navigation Maps)"]
     end
 
-    subgraph DASHBOARD ["3. Activité Principale"]
-        MAIN["MainActivity"]
+    subgraph ACTIVITIES ["3. Vues & Activités"]
+        MAIN["MainActivity<br/>(Tableau de bord)"]
+        DRAWER["AppDrawerActivity<br/>(Tiroir d'applications)"]
+        LOGS["LogViewerActivity<br/>(Historique & Export QR Code)"]
     end
 
     subgraph CARDS ["4. Cartes & Widgets UI"]
@@ -36,29 +48,31 @@ graph TD
         STRAT_SHORTCUT["ShortcutStrategy<br/>(Lanceur d'app configurée)"]
     end
 
-    %% Connexions Entrées -> Services
+%% Connexions Entrées -> Services
     CAN --> SERVICE_CAN
     GPS --> SERVICE_TRIP
     ANDROID --> SERVICE_NOTIF
 
-    %% Connexions Services -> Cartes
+%% Connexions Services -> Cartes
     SERVICE_CAN --> CARD_SPEED
     SERVICE_CAN --> SERVICE_TRIP
     SERVICE_TRIP --> CARD_TRIP
     SERVICE_NOTIF --> CARD_MUSIC
     SERVICE_NOTIF --> CARD_MAPS
 
-    %% Conteneur principal
+%% Conteneur principal
     MAIN --> CARDS
 
-    %% Connexion CardButton aux Stratégies
+%% Connexion CardButton aux Stratégies
     CARD_BUTTON --> STRAT_DRAWER
     CARD_BUTTON --> STRAT_DAYNIGHT
     CARD_BUTTON --> STRAT_SHORTCUT
 
-    %% Personnalisation des couleurs des blocs
+
+%% Personnalisation des couleurs des blocs
     style CARDS fill:#fff2cc,stroke:#d6b656,stroke-width:2px
     style STRATEGY fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style ACTIVITIES fill:#d5e8d4,stroke:#82b366,stroke-width:2px
 ```
 
 Ce schéma résume le fonctionnement global du Car Launcher, structuré en couches indépendantes pour garantir modularité et réactivité.
