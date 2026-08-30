@@ -7,7 +7,7 @@
     <!-- Ta fenêtre personnalisée qui va contenir Google Maps -->
     <SurfaceView
         android:id="@+id/maps_surface_view"
-        android:layout_width="400dp"
+        android:layout_width="700dp"
         android:layout_height="500dp"
         android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true"

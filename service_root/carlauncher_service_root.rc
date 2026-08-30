@@ -1,0 +1,5 @@
+service carlauncher_service_root /system/bin/app_process -Djava.class.path=/system/priv-app/CarLauncher/CarLauncher.apk /system/bin com.rguilbeau.carlauncher.utils.root.RootDaemon
+    class late_start
+    user root
+    group root system log net_raw net_admin
+    seclabel u:r:su:s0
