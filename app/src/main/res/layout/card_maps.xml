@@ -8,7 +8,7 @@
     android:focusable="true"
     android:foreground="@drawable/overlay_card_pressed"
     app:cardBackgroundColor="#3877C6"
-    app:cardCornerRadius="@dimen/_23sdp">
+    app:cardCornerRadius="@dimen/_15sdp">
 
     <!-- Un seul LinearLayout racine avec un padding global pour aérer -->
     <LinearLayout

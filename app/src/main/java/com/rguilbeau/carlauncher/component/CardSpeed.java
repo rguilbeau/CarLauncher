@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
@@ -18,6 +18,7 @@ import androidx.annotation.Nullable;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
@@ -67,14 +68,14 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
             telemetryService = binder.getService();
             telemetryService.addListener(CardSpeed.this);
             isBound = true;
-            Log.d(TAG, "Connected to CarTelemetryService");
+            CarLog.d(TAG, "Connected to CarTelemetryService");
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             isBound = false;
             telemetryService = null;
-            Log.d(TAG, "Disconnected from CarTelemetryService");
+            CarLog.d(TAG, "Disconnected from CarTelemetryService");
         }
     };
 
@@ -110,7 +111,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
             Intent intent = new Intent(getContext(), CarTelemetryService.class);
             getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de la liaison au CarTelemetryService", e);
+            CarLog.e(TAG, "Error binding to CarTelemetryService", e);
         }
     }
 
@@ -133,7 +134,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
                 isBound = false;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de la déconnexion du service", e);
+            CarLog.e(TAG, "Error disconnecting telemetry service", e);
         }
     }
 

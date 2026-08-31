@@ -1,8 +1,11 @@
 package com.rguilbeau.carlauncher;
 
 import android.app.Application;
+import android.content.Intent;
 
-import com.rguilbeau.carlauncher.manager.UncaughtExceptionLoggerManager;
+import com.elvishew.xlog.XLog;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
+import com.rguilbeau.carlauncher.utils.log.StatusBar;
 
 /**
  * Classe Application globale du projet Car Launcher.
@@ -19,6 +22,20 @@ public class CarLauncherApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-        UncaughtExceptionLoggerManager.init(this);
+        CarLog.init(this);
+
+        // Capture automatique des erreurs non interceptées
+        Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            CarLog.e("UNCAUGHT EXCEPTION", "CRASH FATAL SUR LE THREAD [" + thread.getName() + "]", throwable);
+
+            if (defaultHandler != null) {
+                defaultHandler.uncaughtException(thread, throwable);
+            }
+
+            StatusBar.enableOriginalStatusBar(getApplicationContext());
+        });
+
+        StatusBar.disableOriginalStatusBar(getApplicationContext());
     }
 }

@@ -6,11 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.provider.Settings;
-import android.util.Log;
+
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Classe utilitaire centralisant la gestion et la vérification des permissions système.
@@ -123,7 +125,7 @@ public class PermissionManager {
 
             return flat != null && flat.contains(pkgName);
         } catch (Exception e) {
-            Log.e(TAG, "Error checking notification listener permission", e);
+            CarLog.e(TAG, "Error checking notification listener permission", e);
             return false;
         }
     }
@@ -143,7 +145,7 @@ public class PermissionManager {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to open Notification Listener settings", e);
+            CarLog.e(TAG, "Failed to open Notification Listener settings", e);
         }
     }
 }

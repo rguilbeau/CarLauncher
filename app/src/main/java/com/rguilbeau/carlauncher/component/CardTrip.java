@@ -5,7 +5,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -17,6 +17,7 @@ import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.service.TripService;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.Locale;
 
@@ -75,7 +76,7 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
         if (root != null) {
             root.setOnClickListener(v -> reset());
         } else {
-            Log.e(TAG, "ID card_root not found (CardTrip)");
+            CarLog.e(TAG, "ID card_root not found (CardTrip)");
         }
     }
 
@@ -142,7 +143,7 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error updating trip metrics from SharedPreferences", e);
+            CarLog.e(TAG, "Error updating trip metrics from SharedPreferences", e);
         }
     }
 
@@ -172,7 +173,7 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
         } catch (Exception e) {
-            Log.e(TAG, "Error displaying reset confirmation dialog", e);
+            CarLog.e(TAG, "Error displaying reset confirmation dialog", e);
         }
     }
 

@@ -6,7 +6,7 @@
     android:id="@+id/card_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    app:cardCornerRadius="@dimen/_23sdp"
+    app:cardCornerRadius="@dimen/_18sdp"
 
     android:foreground="@drawable/overlay_card_pressed"
     android:clickable="true"

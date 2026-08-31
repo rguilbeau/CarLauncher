@@ -2,13 +2,18 @@ package com.rguilbeau.carlauncher.component;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.location.Address;
 import android.location.Geocoder;
+import android.location.Location;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -18,9 +23,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import org.json.JSONObject;
 
@@ -39,12 +49,11 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 /**
- * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
+ * Composant d'interface utilisateur autonome gérant l'affichage de la météo.
  * <p>
- * Ce composant assure l'affichage de la météo et de la localisation courante.
- * Il s'adapte dynamiquement en réduisant son intervalle de rafraîchissement
- * à 3 secondes en cas d'absence de GPS ou d'Internet, puis repasse à 10 minutes
- * dès que les données ont été récupérées avec succès.
+ * Ce composant gère sa propre géolocalisation, met en cache la dernière position connue
+ * pour un démarrage instantané, et s'abonne intelligemment aux événements réseau et GPS
+ * afin d'optimiser la batterie et le volume de requêtes.
  * </p>
  *
  * @author rguilbeau
@@ -58,14 +67,24 @@ public class CardWeather extends FrameLayout implements Runnable {
     private static final String TAG = "CardWeather";
 
     /**
-     * Intervalle de rafraîchissement normal en millisecondes (10 minutes).
+     * Intervalle de rafraîchissement régulier des données météo en millisecondes (10 minutes).
      */
     private static final long REFRESH_INTERVAL_MS = 600000L;
 
     /**
-     * Intervalle de réessai rapide si échec GPS ou réseau en millisecondes (3 secondes).
+     * Nom du fichier de préférences partagées utilisé pour sauvegarder la dernière position GPS.
      */
-    private static final long FAST_RETRY_INTERVAL_MS = 3000L;
+    private static final String PREF_NAME = "WeatherPrefs";
+
+    /**
+     * Clé de préférence pour stocker la dernière latitude connue.
+     */
+    private static final String PREF_LAT = "last_lat";
+
+    /**
+     * Clé de préférence pour stocker la dernière longitude connue.
+     */
+    private static final String PREF_LON = "last_lon";
 
     /**
      * Composant visuel affichant la température actuelle en °C.
@@ -73,108 +92,94 @@ public class CardWeather extends FrameLayout implements Runnable {
     private final TextView txtWeatherTemp;
 
     /**
-     * Composant visuel affichant l'icône représentant l'état météo.
+     * Composant visuel affichant l'icône représentant l'état météorologique.
      */
     private final ImageView imageViewWeatherIcon;
 
     /**
-     * Composant visuel affichant l'arrière-plan dynamique de la carte météo.
+     * Composant visuel affichant l'arrière-plan dynamique correspondant au temps et à l'heure.
      */
     private final ImageView imageViewWeatherBackground;
 
     /**
-     * Composant visuel affichant le nom de la ville ou la localité.
+     * Composant visuel affichant les messages de statut (recherche GPS, attente réseau...).
      */
     private final TextView txtCity;
 
     /**
-     * Client du service de géolocalisation haute précision de Google Play Services.
+     * Client du service de géolocalisation de Google Play Services.
      */
     private final FusedLocationProviderClient fusedLocationClient;
 
     /**
-     * Handler rattaché au thread principal (UI Thread) gérant la boucle d'exécution récurrente.
+     * Callback déclenché à chaque nouvelle mise à jour de la position GPS.
+     */
+    private LocationCallback locationCallback;
+
+    /**
+     * Dernière position géographique obtenue ou récupérée depuis le cache.
+     */
+    private Location lastKnownLocation = null;
+
+    /**
+     * Gestionnaire système vérifiant l'état de la connexion Internet de l'appareil.
+     */
+    private ConnectivityManager connectivityManager;
+
+    /**
+     * Callback déclenché par le système lorsque la connexion Internet devient disponible.
+     */
+    private ConnectivityManager.NetworkCallback networkCallback;
+
+    /**
+     * Indicateur précisant si le composant est actuellement en mode attente du retour du réseau.
+     */
+    private boolean isWaitingForNetwork = false;
+
+    /**
+     * Gestionnaire attaché au thread principal (UI) exécutant la boucle de rafraîchissement météo.
      */
     private final Handler weatherHandler = new Handler(Looper.getMainLooper());
 
     /**
-     * Client HTTP basé sur la bibliothèque OkHttp pour la récupération des métriques météo.
+     * Client HTTP asynchrone utilisé pour interroger l'API météorologique.
      */
     private final OkHttpClient httpClient = new OkHttpClient();
 
     /**
-     * Service d'exécution mono-thread dédié au traitement asynchrone hors du thread principal (ex: Geocoder).
+     * Service d'exécution asynchrone mono-thread dédié aux opérations lourdes (ex: Geocoder).
      */
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     /**
-     * Énumération des différentes conditions météorologiques gérées par le composant.
+     * Énumération des conditions météorologiques majeures gérées par l'interface.
      */
-    enum WeatherType {
-        /**
-         * Ensoleillé / Ciel dégagé.
-         */
-        SUN,
-        /**
-         * Éclaircies / Soleil et nuages.
-         */
-        SUN_CLOUD,
-        /**
-         * Nuageux / Couvert.
-         */
-        CLOUD,
-        /**
-         * Pluvieux.
-         */
-        RAIN,
-        /**
-         * Neigeux.
-         */
-        SNOW,
-        /**
-         * Orageux.
-         */
-        THUNDERSTORM
-    }
+    enum WeatherType { SUN, SUN_CLOUD, CLOUD, RAIN, SNOW, THUNDERSTORM }
 
     /**
-     * Énumération du moment de la journée (Jour / Nuit) déterminé selon les heures solaires.
+     * Énumération de la période de la journée pour adapter le thème visuel (jour/nuit).
      */
-    enum WeatherTime {
-        /**
-         * Période diurne (jour).
-         */
-        DAY,
-        /**
-         * Période nocturne (nuit).
-         */
-        NIGHT
-    }
+    enum WeatherTime { DAY, NIGHT }
 
     /**
-     * Dictionnaire associant le moment de la journée et le type météo à leurs ressources visuelles respectives.
+     * Dictionnaire mappant le moment de la journée et la condition météo à leurs ressources visuelles respectives.
      */
     private final Map<WeatherTime, Map<WeatherType, WeatherInfo>> weatherInfoMap;
 
     /**
-     * Conteneur de ressources associant l'image d'arrière-plan et l'icône correspondantes à un état météo.
+     * Classe conteneur associant un identifiant d'arrière-plan et un identifiant d'icône.
      */
     static class WeatherInfo {
-        /**
-         * Identifiant de ressource drawable pour le fond de la carte.
-         */
+        /** Identifiant de la ressource drawable pour le fond. */
         public int background;
-
-        /**
-         * Identifiant de ressource drawable pour l'icône météo.
-         */
+        /** Identifiant de la ressource drawable pour l'icône. */
         public int icon;
 
         /**
-         * Construit un objet d'information visuelle météo.
+         * Construit un nouvel objet WeatherInfo.
          *
-         * @param resBackground Identifiant de ressource du fond.
-         * @param resIcon       Identifiant de ressource de l'icône.
+         * @param resBackground La référence R.drawable du fond.
+         * @param resIcon       La référence R.drawable de l'icône.
          */
         public WeatherInfo(int resBackground, int resIcon) {
             this.background = resBackground;
@@ -183,11 +188,11 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier de layout XML.
-     * Initialise la cartographie des ressources graphiques, inflate la vue et prépare le client GPS.
+     * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier XML.
+     * Initialise les vues, le dictionnaire visuel et les gestionnaires de services.
      *
-     * @param context Le contexte Android associé.
-     * @param attrs   Ensemble d'attributs XML passés au composant.
+     * @param context Le contexte de l'application ou de l'activité.
+     * @param attrs   Les attributs XML définis pour cette vue.
      */
     public CardWeather(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -219,77 +224,186 @@ public class CardWeather extends FrameLayout implements Runnable {
         imageViewWeatherBackground = findViewById(R.id.imageViewWeatherBackground);
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(context);
+        connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
     /**
-     * Méthode de cycle de vie appelée lorsque la vue est rattachée à une fenêtre active.
-     * Déclenche la première exécution de la boucle de rafraîchissement météo.
+     * Méthode du cycle de vie appelée lorsque la vue est attachée à l'écran.
+     * Charge le cache, s'abonne au GPS et déclenche la première tentative de mise à jour.
      */
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
+        // Charge la position depuis les SharedPreferences
+        loadLocationFromPrefs();
+
+        // S'abonne au GPS pour garder la position à jour au fil du trajet
+        subscribeToLocationUpdates();
+
+        // Lance le premier cycle (utilisera instantanément la position chargée si elle existe)
         if (weatherHandler != null) {
             weatherHandler.post(this);
         }
     }
 
     /**
-     * Tâche exécutée périodiquement sur le thread principal pour orchestrer l'obtention des coordonnées GPS et des données météo.
+     * Restaure la dernière position géographique enregistrée dans les SharedPreferences.
+     * Permet d'éviter l'attente du signal GPS lors d'un démarrage à froid.
+     */
+    private void loadLocationFromPrefs() {
+        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        if (prefs.contains(PREF_LAT) && prefs.contains(PREF_LON)) {
+            float lat = prefs.getFloat(PREF_LAT, 0f);
+            float lon = prefs.getFloat(PREF_LON, 0f);
+
+            lastKnownLocation = new Location("CacheManuel");
+            lastKnownLocation.setLatitude(lat);
+            lastKnownLocation.setLongitude(lon);
+
+            CarLog.i(TAG, "Location loaded from SharedPreferences.");
+        }
+    }
+
+    /**
+     * Sauvegarde de manière persistante la position GPS actuelle dans les SharedPreferences.
+     *
+     * @param location L'objet Location contenant les coordonnées à sauvegarder.
+     */
+    private void saveLocationToPrefs(Location location) {
+        if (location == null) return;
+        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        prefs.edit()
+                .putFloat(PREF_LAT, (float) location.getLatitude())
+                .putFloat(PREF_LON, (float) location.getLongitude())
+                .apply();
+    }
+
+    /**
+     * S'abonne au fournisseur de position (FusedLocationProvider) pour recevoir des mises à jour périodiques.
+     * Déclenche une actualisation immédiate de la météo si aucune position n'était précédemment connue.
+     */
+    @SuppressLint("MissingPermission")
+    private void subscribeToLocationUpdates() {
+        if (!PermissionManager.hasLocationPermission(getContext())) {
+            CarLog.w(TAG, "Location permission missing for weather.");
+            if (txtCity != null) txtCity.setText("Permission GPS manquante");
+            return;
+        }
+
+        // Demande une mise à jour équilibrée (toutes les 5 mins environ)
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 300000).build();
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                boolean wasNull = (lastKnownLocation == null);
+                lastKnownLocation = locationResult.getLastLocation();
+
+                // Sauvegarde la nouvelle position fraîche
+                saveLocationToPrefs(lastKnownLocation);
+
+                // Si on n'avait vraiment AUCUNE position (même pas dans les SharedPreferences),
+                // on force un rafraîchissement météo immédiat dès le premier fix.
+                if (wasNull && lastKnownLocation != null) {
+                    CarLog.i(TAG, "First GPS fix obtained. Launching weather update immediately.");
+                    weatherHandler.removeCallbacks(CardWeather.this);
+                    weatherHandler.post(CardWeather.this);
+                }
+            }
+        };
+
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+    }
+
+    /**
+     * Implémentation de l'interface Runnable. Invoque la logique de mise à jour météorologique.
      */
     @Override
-    @SuppressLint("MissingPermission")
     public void run() {
-        try {
-            if (PermissionManager.hasLocationPermission(getContext())) {
-                fusedLocationClient.getLastLocation()
-                        .addOnSuccessListener(location -> {
-                            if (location != null) {
-                                // Récupération de la position GPS réussie : lancement des requêtes réseau
-                                fetchCityName(location.getLatitude(), location.getLongitude());
-                                fetchWeather(location.getLatitude(), location.getLongitude());
-                            } else {
-                                // Signal GPS indisponible : passage en réessai rapide
-                                if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
-                                if (txtCity != null) txtCity.setText("Recherche GPS...");
-                                scheduleNextUpdate(true);
-                            }
-                        })
-                        .addOnFailureListener(e -> {
-                            Log.e(TAG, "Error obtaining last location", e);
-                            scheduleNextUpdate(true);
-                        });
-            } else {
-                Log.w(TAG, "Location permission missing, waiting for MainActivity to handle it.");
-                if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
-                if (txtCity != null) txtCity.setText("Recherche GPS...");
-                scheduleNextUpdate(true);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error executing weather update cycle", e);
-            scheduleNextUpdate(true);
+        executeWeatherUpdate();
+    }
+
+    /**
+     * Évalue les conditions (GPS et Réseau) et lance la récupération des données météorologiques.
+     * Affiche les états d'attente sur l'interface si un prérequis manque.
+     */
+    private void executeWeatherUpdate() {
+        if (lastKnownLocation == null) {
+            CarLog.w(TAG, "Waiting for GPS fix...");
+            if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
+            if (txtCity != null) txtCity.setText("Recherche position...");
+            scheduleNextUpdate();
+            return;
+        }
+
+        if (hasInternetConnection()) {
+            fetchCityName(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
+            fetchWeather(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
+        } else {
+            waitForInternetAndFetch();
         }
     }
 
     /**
-     * Planifie la prochaine exécution du cycle de mise à jour.
-     *
-     * @param fastRetry true pour reprogrammer un réessai rapide, false pour attendre le délai nominal de 10 minutes.
+     * Planifie la prochaine exécution de la mise à jour météo sur le thread principal.
      */
-    private void scheduleNextUpdate(boolean fastRetry) {
+    private void scheduleNextUpdate() {
         if (weatherHandler != null) {
             weatherHandler.removeCallbacks(this);
-            long delay = fastRetry ? FAST_RETRY_INTERVAL_MS : REFRESH_INTERVAL_MS;
-            weatherHandler.postDelayed(this, delay);
+            weatherHandler.postDelayed(this, REFRESH_INTERVAL_MS);
         }
     }
 
     /**
-     * Effectue un géocodage inverse asynchrone hors du thread principal pour convertir
-     * les coordonnées latitude/longitude en nom de ville.
+     * Vérifie de manière synchrone si l'appareil dispose d'une connexion Internet active.
      *
-     * @param lat La latitude de la position actuelle.
-     * @param lon La longitude de la position actuelle.
+     * @return true si une connexion Internet est établie, false sinon.
+     */
+    private boolean hasInternetConnection() {
+        if (connectivityManager == null) return false;
+        Network activeNetwork = connectivityManager.getActiveNetwork();
+        NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(activeNetwork);
+        return caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+    }
+
+    /**
+     * S'abonne aux événements de connectivité du système.
+     * Déclenche une nouvelle tentative de mise à jour dès qu'Internet est de nouveau disponible.
+     */
+    private void waitForInternetAndFetch() {
+        if (isWaitingForNetwork || connectivityManager == null) return;
+
+        isWaitingForNetwork = true;
+        CarLog.i(TAG, "No Internet connection. Subscribing to network availability events...");
+        if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
+        if (txtCity != null) txtCity.setText("Attente de connexion...");
+
+        NetworkRequest request = new NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build();
+
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(@NonNull Network network) {
+                super.onAvailable(network);
+                isWaitingForNetwork = false;
+                connectivityManager.unregisterNetworkCallback(this);
+
+                CarLog.i(TAG, "Internet connection restored! Relaunching weather fetch.");
+                weatherHandler.post(() -> executeWeatherUpdate());
+            }
+        };
+
+        connectivityManager.registerNetworkCallback(request, networkCallback);
+    }
+
+    /**
+     * Effectue une requête asynchrone au Geocoder pour obtenir le nom de la ville
+     * correspondant aux coordonnées fournies, et l'inscrit dans les journaux (logs).
+     *
+     * @param lat La latitude.
+     * @param lon La longitude.
      */
     private void fetchCityName(double lat, double lon) {
         executorService.execute(() -> {
@@ -302,27 +416,21 @@ public class CardWeather extends FrameLayout implements Runnable {
                     String cityName = address.getLocality() != null ? address.getLocality() : address.getSubAdminArea();
 
                     if (cityName != null) {
-                        Log.i(TAG, "City found: " + cityName);
-
-                        post(() -> {
-                            if (txtCity != null) {
-                                txtCity.setText("");
-                            }
-                        });
+                        CarLog.i(TAG, "City found: " + cityName);
                     }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error retrieving city name via Geocoder", e);
+                CarLog.e(TAG, "Error retrieving city name via Geocoder", e);
             }
         });
     }
 
     /**
-     * Lance une requête HTTP asynchrone vers l'API Open-Meteo pour obtenir la température,
-     * le code météo et les horaires de lever/coucher du soleil, puis met à jour l'interface.
+     * Envoie une requête HTTP à l'API Open-Meteo pour obtenir les conditions actuelles.
+     * Parse la réponse JSON et met à jour l'interface utilisateur.
      *
-     * @param lat La latitude de la position actuelle.
-     * @param lon La longitude de la position actuelle.
+     * @param lat La latitude géographique.
+     * @param lon La longitude géographique.
      */
     private void fetchWeather(double lat, double lon) {
         String url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current_weather=true&daily=sunrise,sunset&timezone=auto";
@@ -331,8 +439,8 @@ public class CardWeather extends FrameLayout implements Runnable {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e(TAG, "Failed to execute Open-Meteo API request (Network issue?)", e);
-                scheduleNextUpdate(true);
+                CarLog.e(TAG, "Failed to execute Open-Meteo API request", e);
+                scheduleNextUpdate();
             }
 
             @Override
@@ -365,29 +473,33 @@ public class CardWeather extends FrameLayout implements Runnable {
                             if (imageViewWeatherBackground != null) {
                                 imageViewWeatherBackground.setImageResource(info.background);
                             }
+                            if (txtCity != null) {
+                                txtCity.setText("");
+                            }
                         });
 
-                        scheduleNextUpdate(false);
+                        scheduleNextUpdate();
 
                     } catch (Exception e) {
-                        Log.e(TAG, "Error parsing weather JSON response", e);
-                        scheduleNextUpdate(true);
+                        CarLog.e(TAG, "Error parsing weather JSON response", e);
+                        scheduleNextUpdate();
                     }
                 } else {
-                    Log.e(TAG, "Server error during weather request. Code: " + response.code());
-                    scheduleNextUpdate(true);
+                    CarLog.e(TAG, "Server error during weather request. Code: " + response.code());
+                    scheduleNextUpdate();
                 }
             }
         });
     }
 
     /**
-     * Compare l'heure actuelle avec les heures de lever et coucher du soleil pour déterminer s'il fait jour ou nuit.
+     * Calcule si l'heure actuelle correspond au jour ou à la nuit en fonction des heures
+     * de lever et de coucher du soleil fournies par l'API.
      *
-     * @param current L'horodatage actuel au format ISO renvoyé par l'API.
-     * @param sunrise L'horodatage du lever du soleil du jour.
-     * @param sunset  L'horodatage du coucher du soleil du jour.
-     * @return WeatherTime.DAY s'il fait jour, WeatherTime.NIGHT sinon.
+     * @param current L'horodatage actuel.
+     * @param sunrise L'horodatage du lever du soleil.
+     * @param sunset  L'horodatage du coucher du soleil.
+     * @return WeatherTime.DAY si le soleil est levé, sinon WeatherTime.NIGHT.
      */
     private WeatherTime determineWeatherTime(String current, String sunrise, String sunset) {
         try {
@@ -408,16 +520,17 @@ public class CardWeather extends FrameLayout implements Runnable {
                 return WeatherTime.NIGHT;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de l'analyse des horaires soleil", e);
+            CarLog.e(TAG, "Error parsing sunrise/sunset times", e);
             return WeatherTime.DAY;
         }
     }
 
     /**
-     * Mappe un code météo WMO (World Meteorological Organization) vers l'énumération {@link WeatherType}.
+     * Mappe le code météorologique WMO (World Meteorological Organization)
+     * renvoyé par l'API vers l'énumération interne.
      *
-     * @param weatherCode Le code WMO fourni par l'API.
-     * @return La condition météorologique correspondante.
+     * @param weatherCode Le code météorologique entier (0 à 99).
+     * @return Le WeatherType correspondant.
      */
     private WeatherType mapWeatherCodeToType(int weatherCode) {
         if (weatherCode == 0) return WeatherType.SUN;
@@ -431,30 +544,27 @@ public class CardWeather extends FrameLayout implements Runnable {
     }
 
     /**
-     * Récupère le conteneur {@link WeatherInfo} contenant les ressources visuelles appropriées
-     * selon le moment de la journée et le type de météo.
+     * Récupère les ressources visuelles (fonds et icônes) adaptées aux conditions.
      *
-     * @param time Le moment de la journée (Jour ou Nuit).
-     * @param type Le type de météo.
-     * @return L'objet WeatherInfo contenant les identifiants de ressources drawable.
+     * @param time La période de la journée (Jour/Nuit).
+     * @param type Les conditions météorologiques.
+     * @return L'objet WeatherInfo encapsulant les références graphiques.
      */
     private WeatherInfo getWeatherInfo(WeatherTime time, WeatherType type) {
         if (weatherInfoMap.containsKey(time)) {
             Map<WeatherType, WeatherInfo> infoMap = weatherInfoMap.get(time);
-
             if (infoMap.containsKey(type)) {
                 return infoMap.get(type);
             }
-
             return infoMap.get(WeatherType.SUN);
         }
-
         return weatherInfoMap.get(WeatherTime.DAY).get(WeatherType.SUN);
     }
 
     /**
-     * Méthode de cycle de vie appelée lorsque la vue est détachée de sa fenêtre parent.
-     * Annule les callbacks du Handler pour éviter les fuites de mémoire.
+     * Méthode du cycle de vie appelée lorsque la vue est détachée de la fenêtre (destruction).
+     * Libère les ressources, annule les tâches planifiées et se désabonne des listeners
+     * pour prévenir les fuites de mémoire.
      */
     @Override
     protected void onDetachedFromWindow() {
@@ -462,6 +572,15 @@ public class CardWeather extends FrameLayout implements Runnable {
 
         if (weatherHandler != null) {
             weatherHandler.removeCallbacks(this);
+        }
+        if (fusedLocationClient != null && locationCallback != null) {
+            fusedLocationClient.removeLocationUpdates(locationCallback);
+        }
+        if (connectivityManager != null && networkCallback != null && isWaitingForNetwork) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) { }
+            isWaitingForNetwork = false;
         }
     }
 }

@@ -28,27 +28,27 @@ if not exist "%PRIVAPP_XML%" (
     exit /b
 )
 
-echo [1/7] Verification des droits ROOT...
+echo Verification des droits ROOT...
 adb root
 timeout /t 2 >nul
 
 echo.
-echo [2/7] Desactivation de la securite et montage en ecriture...
+echo Desactivation de la securite et montage en ecriture...
 adb disable-verity >nul 2>&1
 adb remount
 timeout /t 2 >nul
 
 echo.
-echo [3/7] Suppression de la version utilisateur (si elle existe)...
+echo Suppression de la version utilisateur (si elle existe)...
 adb uninstall com.rguilbeau.carlauncher >nul 2>&1
 
 echo.
-echo [4/7] Creation des dossiers systeme...
+echo Creation des dossiers systeme...
 adb shell mkdir -p /system/priv-app/%APP_NAME%
 adb shell mkdir -p /system/etc/permissions
 
 echo.
-echo [5/7] Copie de l'APK vers le systeme...
+echo Copie de l'APK vers le systeme...
 adb push "%APK_PATH%" /system/priv-app/%APP_NAME%/%APP_NAME%.apk
 
 if %ERRORLEVEL% NEQ 0 (
@@ -64,7 +64,7 @@ if %ERRORLEVEL% NEQ 0 (
 adb shell chmod 644 /system/priv-app/%APP_NAME%/%APP_NAME%.apk
 
 echo.
-echo [6/7] Copie du fichier de permissions privileged...
+echo Copie du fichier de permissions privileged...
 adb push "%PRIVAPP_XML%" /system/etc/permissions/%PRIVAPP_XML%
 
 if %ERRORLEVEL% NEQ 0 (
@@ -80,11 +80,10 @@ if %ERRORLEVEL% NEQ 0 (
 adb shell chmod 644 /system/etc/permissions/%PRIVAPP_XML%
 
 echo.
-echo [7/7] Redemarrage de l'appareil...
+echo Redemarrage de l'appareil...
 adb reboot
 
 echo.
 echo ===================================================
 echo   Installation terminee avec succes !
 echo ===================================================
-pause

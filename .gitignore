@@ -15,3 +15,5 @@
 local.properties
 app/debug
 app/release
+hardware_dump/configs_etc
+hardware_dump/configs_system

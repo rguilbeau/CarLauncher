@@ -6,5 +6,6 @@
         <attr name="cardIcon" format="reference" />
         <attr name="cardTitle" format="string" />
         <attr name="cardDescription" format="string" />
+        <attr name="cardActivityName" format="string" />
     </declare-styleable>
 </resources>

@@ -11,6 +11,8 @@ import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
 
+import com.rguilbeau.carlauncher.utils.log.CarLog;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,6 +23,10 @@ import java.util.List;
  */
 public class CarTelemetryService extends Service {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation de ce service.
+     */
+    private static String TAG = "CarTelemetryService";
     /**
      * Interface de communication permettant aux composants liés d'interagir avec ce service.
      */
@@ -126,6 +132,8 @@ public class CarTelemetryService extends Service {
      * Met à jour l'état interne et notifie tous les abonnés.
      */
     private void handleAccOnEvent() {
+        CarLog.i(TAG, "Receive: com.qf.action.ACC_ON");
+
         currentSpeed = 0;
         currentRpm = 0;
         notifyTelemetry(currentSpeed, currentRpm);
@@ -140,6 +148,8 @@ public class CarTelemetryService extends Service {
      * et notifie tous les abonnés de ces changements.
      */
     private void handleAccOffEvent() {
+        CarLog.i(TAG, "Receive: com.qf.action.ACC_OFF");
+
         isAccOn = false;
         notifyAccChanged(false);
     }

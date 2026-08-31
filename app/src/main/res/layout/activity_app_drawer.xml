@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#040202"
+    android:background="#000000"
     android:paddingTop="@dimen/_35sdp"
     android:paddingEnd="@dimen/_20sdp"
     android:paddingBottom="@dimen/_10sdp"
@@ -25,11 +25,21 @@
             android:padding="12dp"
             android:src="@drawable/ic_button_gloab_back" />
 
-        <!-- Espace flexible pour repousser le bouton suivant vers le bas -->
+        <!-- Espace flexible pour repousser les boutons suivants vers le bas -->
         <View
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1" />
+
+        <ImageView
+            android:id="@+id/btnLogViewer"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="@dimen/_12sdp"
+            android:src="@drawable/ic_button_debug"/>
 
         <!-- Bouton mise à jour (En bas) -->
         <ImageView
@@ -44,13 +54,30 @@
 
     </LinearLayout>
 
-    <!-- La grille des applications (prend tout l'espace restant) -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvApps"
+    <!-- Conteneur principal gérant l'alternance entre le chargement et la grille -->
+    <FrameLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:padding="16dp" />
+        android:layout_weight="1">
+
+        <!-- Indicateur de chargement (Spinner) affiché par défaut -->
+        <ProgressBar
+            android:id="@+id/progressLoadingApps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminate="true"
+            android:indeterminateTint="#FFFFFF" />
+
+        <!-- La grille des applications (masquée au démarrage) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvApps"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="16dp"
+            android:visibility="gone" />
+
+    </FrameLayout>
 
 </LinearLayout>

@@ -4,7 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.util.AttributeSet;
-import android.util.Log;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -12,12 +12,15 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.cardview.widget.CardView;
 
 import com.rguilbeau.carlauncher.R;
-import com.rguilbeau.carlauncher.component.button_strategy.AppDrawerStrategy;
+import com.rguilbeau.carlauncher.component.button_strategy.ActivityRunnerStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ButtonStrategy;
+import com.rguilbeau.carlauncher.component.button_strategy.ClimStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.DayNightStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
+import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Composant d'interface utilisateur autonome offrant une carte cliquable et personnalisable.
@@ -57,10 +60,12 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
 
         // Inflation du layout XML définissant la structure visuelle interne de la carte
         LayoutInflater.from(context).inflate(R.layout.card_button, this, true);
+        CardView root = findViewById(R.id.card_root);
 
         String type = "";
         String title = "";
         String description = "";
+        String activityName = "";
         int cardColor = 0;
         int cardIconResId = 0;
 
@@ -74,10 +79,10 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
                 description = a.getString(R.styleable.CardButton_cardDescription);
                 cardColor = a.getColor(R.styleable.CardButton_cardColor, 0);
                 cardIconResId = a.getResourceId(R.styleable.CardButton_cardIcon, 0);
-
+                activityName = a.getString(R.styleable.CardButton_cardActivityName);
                 a.recycle();
             } catch (Exception e) {
-                Log.e(TAG, "Error extracting custom attributes from XML", e);
+                CarLog.e(TAG, "Error extracting custom attributes from XML", e);
             }
         }
 
@@ -103,9 +108,8 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
             if (txtDescription != null && description != null) {
                 txtDescription.setText(description);
             }
-
         } catch (Exception e) {
-            Log.e(TAG, "Error applying visual attributes to CardButton views", e);
+            CarLog.e(TAG, "Error applying visual attributes to CardButton views", e);
         }
 
         // Sécurisation de la chaîne pour éviter les NullPointerException lors du contrôle du type
@@ -115,10 +119,13 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
 
         // Instanciation de la stratégie métier selon le type spécifié dans le XML
         try {
-            if (AppDrawerStrategy.TYPE.equals(type)) {
-                this.buttonStrategy = new AppDrawerStrategy();
+            if (ActivityRunnerStrategy.TYPE.equals(type)) {
+                activityName = activityName == null ? "null" : activityName;
+                this.buttonStrategy = new ActivityRunnerStrategy(activityName);
             } else if (DayNightStrategy.TYPE.equals(type)) {
                 this.buttonStrategy = new DayNightStrategy();
+            } else if (ClimStrategy.TYPE.equals(type)) {
+                this.buttonStrategy = new ClimStrategy();
             } else if (!type.isEmpty()) {
                 this.buttonStrategy = new ShortcutStrategy(type);
             } else {
@@ -126,15 +133,14 @@ public class CardButton extends FrameLayout implements View.OnClickListener, Vie
             }
 
             // Attachement des écouteurs sur la vue racine pour déclencher l'effet visuel de clic (ripple/foreground)
-            View root = findViewById(R.id.card_root);
             if (root != null) {
                 root.setOnClickListener(this);
                 root.setOnLongClickListener(this);
             } else {
-                Log.e(TAG, "ID card_root not found (CardButton)");
+                CarLog.e(TAG, "ID card_root not found (CardButton)");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error during button strategy initialization", e);
+            CarLog.e(TAG, "Error during button strategy initialization", e);
         }
     }
 

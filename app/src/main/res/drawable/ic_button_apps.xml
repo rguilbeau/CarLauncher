@@ -6,7 +6,7 @@
 
     <!-- Cercle de fond -->
     <path
-        android:fillColor="#556572"
+        android:fillColor="#5C7182"
         android:pathData="M32,0
             A32,32 0,1 0,32,64
             A32,32 0,1 0,32,0" />
