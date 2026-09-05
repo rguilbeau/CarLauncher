@@ -7,6 +7,8 @@ import android.content.pm.PackageInstaller;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.rguilbeau.carlauncher.utils.log.CarLog;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,6 +21,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -28,9 +32,13 @@ import java.util.concurrent.Executors;
  */
 public class GitHubUpdater {
     /**
-     * URL de l'API GitHub pour récupérer les informations de la dernière version (release) du projet.
+     * Le tag utilisé dans l'écriture des logs
      */
-    private static final String GITHUB_API_URL = "https://api.github.com/repos/rguilbeau/CarLauncher/releases/latest";
+    private static final String TAG = "GitHubUpdater";
+    /**
+     * URL de l'API GitHub pour récupérer les informations des versions (release) du projet.
+     */
+    private static final String GITHUB_API_URL = "https://api.github.com/repos/rguilbeau/CarLauncher/releases";
 
     /**
      * Contexte Android de l'application, utilisé pour accéder au gestionnaire de paquets, aux répertoires locaux et aux Intents.
@@ -40,7 +48,7 @@ public class GitHubUpdater {
     /**
      * Écouteur (callback) permettant de transmettre les événements de statut, de progression ou d'erreur à l'interface utilisateur.
      */
-    private final UpdateListener listener;
+    private UpdateListener listener;
 
     /**
      * Gestionnaire attaché au thread principal (UI Thread) pour s'assurer que les mises à jour de l'interface graphique sont exécutées en toute sécurité.
@@ -55,25 +63,32 @@ public class GitHubUpdater {
     /**
      * Initialise le gestionnaire de mise à jour.
      *
-     * @param context  Le contexte Android pour accéder au gestionnaire d'installation et aux dossiers.
-     * @param listener L'écouteur pour notifier l'interface utilisateur de la progression et des erreurs.
+     * @param context Le contexte Android pour accéder au gestionnaire d'installation et aux dossiers.
      */
-    public GitHubUpdater(Context context, UpdateListener listener) {
+    public GitHubUpdater(Context context) {
         this.context = context;
-        this.listener = listener;
+
         this.mainHandler = new Handler(Looper.getMainLooper());
         this.executor = Executors.newSingleThreadExecutor();
     }
 
     /**
-     * Lance le processus complet de mise à jour en arrière-plan :
-     * vérification de la release GitHub, téléchargement du fichier APK et installation.
+     * Ajoute le listener pour notifier l'interface utilisateur
+     *
+     * @param listener L'écouteur pour notifier l'interface utilisateur de la progression, la liste des versions et des erreurs.
      */
-    public void update() {
+    public void setUpdateListener(UpdateListener listener) {
+        this.listener = listener;
+    }
+
+    /**
+     * Lance la récupération de la liste des versions disponibles
+     * (Le callback UpdateListener.onVersionsFetched() sera appelée avec la liste des versions)
+     */
+    public void fetchVersions() {
         executor.execute(() -> {
             try {
-                // Vérification de la version sur GitHub
-                postStatus("Recherche d'une mise à jour...");
+                postStatus("Recherche des versions...");
 
                 URL url = new URL(GITHUB_API_URL);
                 HttpURLConnection apiConn = (HttpURLConnection) url.openConnection();
@@ -81,6 +96,7 @@ public class GitHubUpdater {
                 apiConn.setRequestProperty("Accept", "application/vnd.github.v3+json");
 
                 if (apiConn.getResponseCode() != 200) {
+                    CarLog.e(TAG, "Fetch version failed. API GitHub response code: " + apiConn.getResponseCode());
                     postError("Erreur API GitHub : " + apiConn.getResponseCode());
                     return;
                 }
@@ -93,50 +109,62 @@ public class GitHubUpdater {
                 }
                 reader.close();
 
-                JSONObject jsonResponse = new JSONObject(jsonResult.toString());
-                String latestVersion = jsonResponse.getString("tag_name");
+                JSONArray releasesArray = new JSONArray(jsonResult.toString());
+                List<ReleaseItem> availableReleases = new ArrayList<>();
 
-                postStatus("Nouvelle version trouvée : " + latestVersion);
+                // Parcours de toutes les releases
+                for (int i = 0; i < releasesArray.length(); i++) {
+                    JSONObject release = releasesArray.getJSONObject(i);
+                    String version = release.getString("tag_name");
+                    JSONArray assets = release.getJSONArray("assets");
 
-                // Extraction du lien de téléchargement de l'APK
-                JSONArray assets = jsonResponse.getJSONArray("assets");
-                if (assets.length() == 0) {
-                    postError("Aucun fichier trouvé dans la release. (" + latestVersion + ")");
-                    return;
-                }
-
-                String downloadUrl = null;
-                int fileSize = 0;
-
-                for (int i = 0; i < assets.length(); i++) {
-                    JSONObject asset = assets.getJSONObject(i);
-                    String assetName = asset.getString("name");
-
-                    if ("CarLauncher.apk".equals(assetName)) {
-                        downloadUrl = asset.getString("browser_download_url");
-                        fileSize = asset.getInt("size");
-                        break;
+                    for (int j = 0; j < assets.length(); j++) {
+                        JSONObject asset = assets.getJSONObject(j);
+                        if ("CarLauncher.apk".equals(asset.getString("name"))) {
+                            availableReleases.add(new ReleaseItem(
+                                    version,
+                                    asset.getString("browser_download_url"),
+                                    asset.getInt("size")
+                            ));
+                            break; // On passe à la release suivante
+                        }
                     }
                 }
 
-                if (downloadUrl == null) {
-                    postError("Le fichier CarLauncher.apk est introuvable dans cette release.");
-                    return;
-                }
-
-                // Téléchargement de l'APK
-                postStatus("Téléchargement en cours...");
-                File apkFile = downloadApk(downloadUrl, fileSize);
-
-                if (apkFile.exists()) {
-                    // Installation silencieuse
-                    postStatus("Installation de la mise à jour " + latestVersion + "...");
-                    installApkSilently(apkFile);
-                    postSuccess();
+                if (availableReleases.isEmpty()) {
+                    CarLog.w(TAG, "No release with CarLauncher.apk assets found");
+                    postError("Aucune version contenant CarLauncher.apk n'a été trouvée.");
+                } else {
+                    // Envoi de la liste à l'UI
+                    mainHandler.post(() -> listener.onVersionsFetched(availableReleases));
                 }
 
             } catch (Exception e) {
-                postError("Erreur : " + e.getMessage());
+                CarLog.e(TAG, "Failed to fetch version", e);
+                postError("Erreur lors de la récupération des versions");
+            }
+        });
+    }
+
+    /**
+     * Met à jour l'application avec une release spécifique
+     *
+     * @param release La release de mise à jour
+     */
+    public void update(ReleaseItem release) {
+        executor.execute(() -> {
+            try {
+                postStatus("Téléchargement de la version " + release.version + "...");
+                File apkFile = downloadApk(release.downloadUrl, release.size);
+
+                if (apkFile.exists()) {
+                    postStatus("Installation de " + release.version + "...");
+                    installApkSilently(apkFile);
+                    postSuccess();
+                }
+            } catch (Exception e) {
+                CarLog.e(TAG, "Failed to update version", e);
+                postError("Erreur lors de la mise à jour");
             }
         });
     }

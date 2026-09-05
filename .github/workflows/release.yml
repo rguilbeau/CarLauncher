@@ -31,7 +31,10 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Compilation et Signature de l'APK Release
-        run: ./gradlew assembleRelease
+        run: |
+          VERSION_NAME="${GITHUB_REF_NAME#v}"
+          VERSION_CODE=$(git rev-list --count HEAD)
+          ./gradlew assembleRelease -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
 
       - name: Renommer l'APK
         run: mv app/build/outputs/apk/release/app-release.apk CarLauncher.apk

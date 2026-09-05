@@ -7,6 +7,13 @@ package com.rguilbeau.carlauncher.selfupdate;
 public interface UpdateListener {
 
     /**
+     * Appelée lorsque la liste des versions est récupérée
+     *
+     * @param releases Les releases disponibles
+     */
+    void onVersionsFetched(java.util.List<ReleaseItem> releases);
+
+    /**
      * Appelée lors d'un changement d'état du processus de mise à jour.
      *
      * @param message Le message textuel décrivant l'étape en cours (ex: "Vérification...", "Téléchargement...").

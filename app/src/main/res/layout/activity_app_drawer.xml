@@ -10,7 +10,7 @@
 
     <!-- Barre latérale gauche -->
     <LinearLayout
-        android:layout_width="@dimen/_40sdp"
+        android:layout_width="@dimen/_50sdp"
         android:layout_height="match_parent"
         android:orientation="vertical">
 
@@ -23,6 +23,7 @@
             android:clickable="true"
             android:focusable="true"
             android:padding="12dp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_button_gloab_back" />
 
         <!-- Espace flexible pour repousser les boutons suivants vers le bas -->
@@ -39,6 +40,7 @@
             android:clickable="true"
             android:focusable="true"
             android:padding="@dimen/_12sdp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_button_debug"/>
 
         <!-- Bouton mise à jour (En bas) -->
@@ -50,7 +52,17 @@
             android:clickable="true"
             android:focusable="true"
             android:padding="@dimen/_12sdp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_button_update" />
+
+        <TextView
+            android:id="@+id/textVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x.x.x"
+            android:textSize="@dimen/_8sdp"
+            android:layout_gravity="center"
+            android:layout_marginBottom="@dimen/_20sdp"/>
 
     </LinearLayout>
 

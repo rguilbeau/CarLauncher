@@ -2,6 +2,9 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+val code = project.findProperty("versionCode")?.toString()?.toInt() ?: 1
+val name = project.findProperty("versionName")?.toString() ?: "0.0.0-dev"
+
 android {
     namespace = "com.rguilbeau.carlauncher"
     compileSdk = 35
@@ -10,8 +13,8 @@ android {
         applicationId = "com.rguilbeau.carlauncher"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = code
+        versionName = name
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -17,13 +17,17 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.rguilbeau.carlauncher.CarLauncherApp;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.selfupdate.GitHubUpdater;
+import com.rguilbeau.carlauncher.selfupdate.ReleaseItem;
 import com.rguilbeau.carlauncher.selfupdate.UpdateListener;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 import com.rguilbeau.carlauncher.view.AppDrawerAdapter;
 import com.rguilbeau.carlauncher.provider.apps.AppInfo;
 import com.rguilbeau.carlauncher.provider.apps.AppProvider;
+
+import org.w3c.dom.Text;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -69,6 +73,11 @@ public class AppDrawerActivity extends AppCompatActivity {
                 btnLogViewer.setOnClickListener(v -> showLogViewer());
             }
 
+            TextView textVersion = findViewById(R.id.textVersion);
+            if (textVersion != null) {
+                textVersion.setText(CarLauncherApp.getCurrentVersion(this));
+            }
+            
             RecyclerView rvApps = findViewById(R.id.rvApps);
             ProgressBar progressLoadingApps = findViewById(R.id.progressLoadingApps);
 
@@ -133,18 +142,51 @@ public class AppDrawerActivity extends AppCompatActivity {
         progressBar.setIndeterminate(true);
         layout.addView(progressBar);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog updateDialog = new AlertDialog.Builder(this)
                 .setTitle("Mise à jour système")
                 .setView(layout)
                 .setCancelable(false)
                 .setNegativeButton("Fermer", (d, which) -> d.dismiss())
                 .show();
 
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
+        updateDialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+        updateDialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+        updateDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
 
-        GitHubUpdater updater = new GitHubUpdater(this, new UpdateListener() {
+        GitHubUpdater updater = new GitHubUpdater(this);
+        updater.setUpdateListener(new UpdateListener() {
+
+            /**
+             * Appelée lorsque la liste des versions est récupérée
+             *
+             * @param releases Les releases disponibles
+             */
+            @Override
+            public void onVersionsFetched(List<ReleaseItem> releases) {
+                // Création du tableau de noms pour la popup
+                String[] versionNames = new String[releases.size()];
+                for (int i = 0; i < releases.size(); i++) {
+                    versionNames[i] = releases.get(i).version;
+                }
+
+                // Affichage de la popup
+                AlertDialog releaseDialog = new AlertDialog.Builder(AppDrawerActivity.this)
+                        .setTitle("Choisissez une version")
+                        .setItems(versionNames, (dialogInterface, which) -> {
+                            // L'utilisateur a cliqué sur une version, on lance la suite
+                            ReleaseItem selectedRelease = releases.get(which);
+                            updater.update(selectedRelease);
+                        })
+                        .setNegativeButton("Annuler", (dialog, which) -> {
+                            updateDialog.dismiss();
+                            dialog.dismiss();
+                        })
+                        .show();
+
+                releaseDialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.WHITE);
+                releaseDialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.WHITE);
+                releaseDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
+            }
 
             /**
              * Appelée lorsque le statut de l'opération change.
@@ -180,7 +222,7 @@ public class AppDrawerActivity extends AppCompatActivity {
                 statusText.setText("Erreur : " + error);
                 statusText.setTextColor(android.graphics.Color.RED);
                 progressBar.setVisibility(View.GONE);
-                dialog.setCancelable(true);
+                updateDialog.setCancelable(true);
             }
 
             /**
@@ -190,11 +232,11 @@ public class AppDrawerActivity extends AppCompatActivity {
             public void onSuccess() {
                 statusText.setText("Mise à jour installée !");
                 progressBar.setProgress(100);
-                dialog.setCancelable(true);
+                updateDialog.setCancelable(true);
             }
         });
 
-        updater.update();
+        updater.fetchVersions();
     }
 
     /**
