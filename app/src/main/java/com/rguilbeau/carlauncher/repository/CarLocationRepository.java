@@ -24,6 +24,6 @@ public class CarLocationRepository extends AbstractRepository {
                 "longitude = EXCLUDED.longitude, " +
                 "updated_at = CURRENT_TIMESTAMP;";
 
-        client.exec(query, location.latitude, location.longitude);
+        worker.addQueue(query, location.latitude, location.longitude);
     }
 }

@@ -63,6 +63,8 @@ dependencies {
     // Outil pour faire des requêtes internet
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.bumptech.glide:glide:4.16.0")
+    // File d'attente persistante (contrainte réseau) pour les écritures en base de données
+    implementation("androidx.work:work-runtime:2.10.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

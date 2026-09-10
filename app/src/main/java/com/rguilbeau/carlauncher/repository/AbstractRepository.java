@@ -1,13 +1,12 @@
 package com.rguilbeau.carlauncher.repository;
 
-import com.rguilbeau.carlauncher.repository.client.IClient;
-import com.rguilbeau.carlauncher.repository.client.NeonClient;
+import com.rguilbeau.carlauncher.repository.worker.WorkerManager;
 
 public abstract class AbstractRepository {
 
-    protected final IClient client;
+    protected final WorkerManager worker;
 
     AbstractRepository() {
-        client = new NeonClient();
+        worker = WorkerManager.get();
     }
 }
