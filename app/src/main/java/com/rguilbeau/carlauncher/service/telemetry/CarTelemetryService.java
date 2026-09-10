@@ -294,6 +294,32 @@ public class CarTelemetryService extends Service {
         if (!Double.isNaN(mileageToNotify)) {
             notifyMileageUpdated(mileageToNotify);
         }
+
+        logDrivingMileageDiagnostic(payload);
+    }
+
+    /**
+     * Log de diagnostic temporaire (Peugeot 407) : {@code mDrivingMileageTotal} n'est jamais rempli
+     * par le parseur véhicule pour ce modèle, mais {@code mDrivingMileage1}/{@code mDrivingMileage2}
+     * (offsets 21 et 23 de la trame CarbodyState, cf. {@code QfSdkDataParse.parseCarbodyState2Sdk})
+     * le sont peut-être. Ce log sert uniquement à vérifier, sur un trajet réel, si ces valeurs
+     * changent en continu ou seulement lorsque la page correspondante de l'ordinateur de bord est
+     * sélectionnée sur le combiné. Ne modifie aucun état, ne notifie aucun abonné.
+     *
+     * @param payload La trame CarbodyState complète (même tableau que {@link #handleCanBusPayload}).
+     */
+    private void logDrivingMileageDiagnostic(byte[] payload) {
+        if (payload.length < 23) return;
+        int rawTrip1 = readBigEndianUnsigned(payload, 21, 2);
+        String trip1 = rawTrip1 == 0xFFFF ? "n/a" : (rawTrip1 / 10.0d) + "km";
+
+        String trip2 = "n/a (trame trop courte)";
+        if (payload.length >= 25) {
+            int rawTrip2 = readBigEndianUnsigned(payload, 23, 2);
+            trip2 = rawTrip2 == 0xFFFF ? "n/a" : (rawTrip2 / 10.0d) + "km";
+        }
+
+        CarLog.d(TAG, "[DIAG] mDrivingMileage1(raw offset21)=" + trip1 + " mDrivingMileage2(raw offset23)=" + trip2);
     }
 
     /**
