@@ -15,6 +15,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
@@ -115,6 +117,22 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
 
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
         registerReceiver(screenWakeUpReceiver, filter);
+
+        View root = findViewById(android.R.id.content);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+
+            // Récupération directe de la hauteur en PIXELS
+            int statusBarHeightPx = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+
+            CarLog.d(TAG, "Hauteur de la barre pour l'overlay : " + statusBarHeightPx + " px");
+
+            // TO DO : Initialiser votre overlay avec WindowManager ici
+
+            return insets;
+        });
+
+        // Force le système à déclencher le listener immédiatement
+        ViewCompat.requestApplyInsets(root);
     }
 
     /**

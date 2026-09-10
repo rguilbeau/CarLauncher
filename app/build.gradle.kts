@@ -57,6 +57,7 @@ dependencies {
     implementation("androidx.palette:palette:1.0.0")
     implementation("com.elvishew:xlog:1.11.1")
     implementation("com.google.zxing:core:3.5.2")
+    implementation("org.postgresql:postgresql:42.7.2")
     // Outils pour la position GPS
     implementation("com.google.android.gms:play-services-location:21.1.0")
     // Outil pour faire des requêtes internet
