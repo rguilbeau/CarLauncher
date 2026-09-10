@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CarLauncher"
 include(":app")
+include(":fake-vehicle")

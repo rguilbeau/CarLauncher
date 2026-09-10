@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ATTENTION : ce module usurpe le package "com.qf.vehicle" (celui de la vraie application
+    système de l'autoradio) afin que CarLauncher (CarTelemetryService) puisse s'y connecter via
+    bindService exactement comme il le ferait sur la vraie tête d'unité.
+
+    À N'INSTALLER QUE SUR ÉMULATEUR / APPAREIL DE TEST. Ne jamais installer sur la vraie tablette :
+    cela entrerait en conflit avec la véritable application système du même nom.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.qf.vehicle">
+
+    <application
+        android:allowBackup="false"
+        android:label="FAKE QF Vehicle (test stub)"
+        android:icon="@android:drawable/sym_def_app_icon">
+
+        <!-- Écran de statut minimal, uniquement pour permettre le Run/Debug normal depuis
+             Android Studio et visualiser en direct l'état poussé via adb. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Reproduit le service AIDL réel (ICanBusServiceFeature) exposé par l'autoradio -->
+        <service
+            android:name=".VehicleServiceStub"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.qf.vehicle.service.ACTION_CAN_SERVICE" />
+            </intent-filter>
+        </service>
+
+    </application>
+</manifest>

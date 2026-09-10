@@ -1,15 +1,14 @@
 package com.rguilbeau.carlauncher.service.telemetry;
 
-import android.annotation.SuppressLint;
 import android.app.Service;
-import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.os.Binder;
-import android.os.Build;
 import android.os.IBinder;
-import android.provider.Settings;
+import android.os.Parcel;
+import android.os.RemoteException;
 
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
@@ -17,16 +16,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Service centralisant la communication avec le système (MCU) de l'autoradio.
- * Capte, décode et distribue les événements du véhicule (état du contact, vitesse, régime moteur)
- * aux différents composants de l'application via le patron de conception Observateur (Observer Pattern).
+ * Service centralisant la communication avec le service CAN bus de l'autoradio (package
+ * {@code com.qf.vehicle}). Décode et distribue en temps réel la télémétrie du véhicule (vitesse,
+ * régime moteur, kilométrage total) aux composants abonnés via le patron de conception Observateur.
+ * <p>
+ * Ce service ne gère que le client AIDL {@code ICanBusServiceFeature} exposé par l'autoradio.
+ * L'état du contact (ACC_ON/ACC_OFF) est géré séparément par
+ * {@link com.rguilbeau.carlauncher.service.ignition.IgnitionService}.
+ * <p>
+ * Contrairement au broadcast {@code com.qf.vehicle.action.DATA_SHARE} (limité à une mise à jour
+ * toutes les 2 secondes côté autoradio), ce canal AIDL délivre chaque trame CAN décodée sans
+ * throttle, donc en temps réel.
  */
 public class CarTelemetryService extends Service {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation de ce service.
      */
-    private static String TAG = "CarTelemetryService";
+    private static final String TAG = "CarTelemetryService";
+
     /**
      * Interface de communication permettant aux composants liés d'interagir avec ce service.
      */
@@ -38,11 +46,6 @@ public class CarTelemetryService extends Service {
     private final List<CarTelemetryListener> listeners = new ArrayList<>();
 
     /**
-     * État actuel du contact du véhicule. Initialisé à true par défaut.
-     */
-    private boolean isAccOn = true;
-
-    /**
      * Dernière vitesse calculée du véhicule en km/h.
      */
     private int currentSpeed = 0;
@@ -51,6 +54,265 @@ public class CarTelemetryService extends Service {
      * Dernier régime moteur (RPM) calculé du véhicule en tours par minute.
      */
     private int currentRpm = 0;
+
+    /**
+     * Dernier kilométrage total connu du véhicule (odomètre), en kilomètres.
+     * Vaut -1 tant qu'aucune valeur valide n'a été reçue du bus CAN.
+     * <p>
+     * Stocké en {@code double} (et non {@code float}) : au-delà de quelques dizaines de milliers
+     * de km, un {@code float} (32 bits, ~7 chiffres significatifs) n'a plus assez de précision pour
+     * distinguer des écarts de 0,1 km, ce qui fausse les calculs de distance basés dessus. Un
+     * {@code double} (~15-17 chiffres significatifs) offre une marge très largement suffisante pour
+     * n'importe quel kilométrage réaliste.
+     */
+    private double currentMileageKm = -1d;
+
+    // ---------------------------------------------------------------------------------------
+    // Client AIDL vers le service CAN bus de l'autoradio (com.qf.vehicle.service.VehicleService)
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Action du service CAN bus exposé par l'application système de l'autoradio.
+     */
+    private static final String CANBUS_ACTION = "com.qf.vehicle.service.ACTION_CAN_SERVICE";
+
+    /**
+     * Package de l'application système de l'autoradio hébergeant le service CAN bus.
+     */
+    private static final String CANBUS_PACKAGE = "com.qf.vehicle";
+
+    /**
+     * Descripteur d'interface AIDL de {@code ICanBusServiceFeature}, utilisé pour le jeton d'interface
+     * des transactions Binder. Doit correspondre exactement au nom qualifié utilisé côté autoradio.
+     */
+    private static final String FEATURE_DESCRIPTOR = "com.qf.vehicle.service.ICanBusServiceFeature";
+
+    /**
+     * Descripteur d'interface AIDL de {@code ICanBusServiceCallback}, utilisé pour le jeton d'interface
+     * des transactions Binder reçues par notre callback.
+     */
+    private static final String CALLBACK_DESCRIPTOR = "com.qf.vehicle.service.ICanBusServiceCallback";
+
+    /**
+     * Code de transaction Binder de {@code ICanBusServiceFeature#initCanbusSdkConfig}.
+     */
+    private static final int TX_INIT_SDK_CONFIG = 1;
+
+    /**
+     * Code de transaction Binder de {@code ICanBusServiceFeature#addCarbodyStateCallBack}.
+     */
+    private static final int TX_ADD_CARBODY_STATE_CALLBACK = 11;
+
+    /**
+     * Code de transaction Binder de {@code ICanBusServiceCallback#onGetPackedData}.
+     */
+    private static final int TX_ON_GET_PACKED_DATA = 2;
+
+    /**
+     * Nom d'application attendu par le SDK CAN bus pour valider l'initialisation (mode "App").
+     * Valeur codée en dur côté autoradio (classe AidlFeature4App) : seul ce couple nom/clé active
+     * la distribution des trames CarbodyState pour une application tierce.
+     */
+    private static final String SDK_APP_NAME = "QFApp";
+
+    /**
+     * Clé d'activation attendue par le SDK CAN bus, associée à {@link #SDK_APP_NAME}.
+     */
+    private static final String SDK_APP_KEY = "832ded976b28e7ee81a688a4f4095331";
+
+    /**
+     * Type de trame CarbodyState dans le protocole "packé" du SDK CAN bus (en-tête 0x98).
+     */
+    private static final byte FRAME_TYPE_CARBODY_STATE = 2;
+
+    /**
+     * Octet d'en-tête identifiant une trame "packée" du SDK CAN bus.
+     */
+    private static final byte FRAME_HEADER = (byte) 0x98;
+
+    /**
+     * Référence brute vers le binder distant du service CAN bus, une fois la connexion établie.
+     */
+    private IBinder canBusBinder;
+
+    /**
+     * Notre callback, exposé au service CAN bus distant pour recevoir chaque trame CarbodyState.
+     * Implémenté manuellement au niveau Binder (sans passer par un fichier .aidl généré) afin de ne
+     * reproduire que les 3 méthodes réellement utilisées par {@code ICanBusServiceCallback}, en
+     * respectant les codes de transaction exacts de l'interface d'origine.
+     */
+    private final Binder carbodyStateCallback = new Binder() {
+        @Override
+        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+            if (code == IBinder.INTERFACE_TRANSACTION) {
+                if (reply != null) reply.writeString(CALLBACK_DESCRIPTOR);
+                return true;
+            }
+            if (code == TX_ON_GET_PACKED_DATA) {
+                data.enforceInterface(CALLBACK_DESCRIPTOR);
+                byte[] payload = data.createByteArray();
+                if (reply != null) reply.writeNoException();
+                handleCanBusPayload(payload);
+                return true;
+            }
+            // Codes 1 (onGetSrcData) et 3 (onGetLeapMotorSettings) : non utilisés par notre
+            // abonnement (addCarbodyStateCallBack), mais acquittés pour ne jamais faire échouer
+            // une transaction bloquante côté autoradio.
+            if (code == 1 || code == 3) {
+                if (reply != null) reply.writeNoException();
+                return true;
+            }
+            return super.onTransact(code, data, reply, flags);
+        }
+    };
+
+    /**
+     * Gère la connexion/déconnexion au service CAN bus distant. Android relie et délie
+     * automatiquement (BIND_AUTO_CREATE) ce service en fonction de la disponibilité du processus
+     * {@code com.qf.vehicle} ; onServiceConnected est donc rappelée automatiquement après un
+     * redémarrage du service côté autoradio.
+     */
+    private final ServiceConnection canBusConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            canBusBinder = service;
+            try {
+                initCanbusSdkConfig();
+                registerCarbodyStateCallback();
+                CarLog.i(TAG, "Connected to CAN bus AIDL service (com.qf.vehicle)");
+            } catch (RemoteException e) {
+                CarLog.e(TAG, "Error initializing CAN bus AIDL service", e);
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            CarLog.w(TAG, "CAN bus AIDL service disconnected");
+            canBusBinder = null;
+        }
+    };
+
+    /**
+     * Lie ce service au service CAN bus exposé par l'autoradio (package {@code com.qf.vehicle}).
+     * Le service étant exporté sans permission particulière, aucune autorisation spéciale n'est requise.
+     */
+    private void bindCanBus() {
+        try {
+            Intent intent = new Intent(CANBUS_ACTION);
+            intent.setPackage(CANBUS_PACKAGE);
+            boolean bound = bindService(intent, canBusConnection, Context.BIND_AUTO_CREATE);
+            if (!bound) {
+                CarLog.e(TAG, "Unable to bind CAN bus AIDL service, is com.qf.vehicle installed?");
+            }
+        } catch (Exception e) {
+            CarLog.e(TAG, "Error binding CAN bus AIDL service", e);
+        }
+    }
+
+    /**
+     * Envoie la trame d'initialisation du SDK CAN bus ("mode App") via une transaction Binder brute.
+     * Requis pour que l'autoradio commence à distribuer les trames CarbodyState à cette application.
+     *
+     * @throws RemoteException Si la transaction Binder échoue.
+     */
+    private void initCanbusSdkConfig() throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken(FEATURE_DESCRIPTOR);
+            data.writeByte((byte) 0); // demandType = App
+            data.writeString(SDK_APP_NAME);
+            data.writeString(SDK_APP_KEY);
+            canBusBinder.transact(TX_INIT_SDK_CONFIG, data, reply, 0);
+            reply.readException();
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    /**
+     * Enregistre notre callback auprès du service CAN bus distant pour recevoir chaque trame
+     * CarbodyState décodée (vitesse, régime moteur, kilométrage), sans throttle.
+     *
+     * @throws RemoteException Si la transaction Binder échoue.
+     */
+    private void registerCarbodyStateCallback() throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken(FEATURE_DESCRIPTOR);
+            data.writeStrongBinder(carbodyStateCallback);
+            canBusBinder.transact(TX_ADD_CARBODY_STATE_CALLBACK, data, reply, 0);
+            reply.readException();
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    /**
+     * Décode une trame "packée" reçue du service CAN bus et met à jour la vitesse, le régime moteur
+     * et le kilométrage total lorsqu'il s'agit d'une trame CarbodyState (type 2).
+     * <p>
+     * Format (protocole {@code QfSdkDataRule} de l'autoradio) : octet 0 = en-tête (0x98),
+     * octet 1 = type de trame, octet 2 = longueur, octets 3+ = charge utile.
+     *
+     * @param payload Le tableau d'octets brut transmis par le callback {@code onGetPackedData}.
+     */
+    private void handleCanBusPayload(byte[] payload) {
+        if (payload == null || payload.length < 19) return;
+        if (payload[0] != FRAME_HEADER) return;
+        if (payload[1] != FRAME_TYPE_CARBODY_STATE) return;
+
+        // Ce callback est invoqué sur un thread du pool Binder (pas le thread principal) : les
+        // mises à jour d'état sont donc synchronisées, en cohérence avec les accesseurs
+        // synchronized (getCurrentSpeed, etc.).
+        int speedToNotify;
+        int rpmToNotify;
+        double mileageToNotify = Double.NaN;
+
+        int newSpeed = readBigEndianUnsigned(payload, 8, 2);
+        int newRpm = readBigEndianUnsigned(payload, 10, 2);
+        int rawMileage = readBigEndianUnsigned(payload, 16, 3);
+
+        synchronized (this) {
+            // 0xFFFF / 0xFFFFFF = valeur "non disponible" signalée par le bus CAN : on garde la
+            // dernière valeur connue plutôt que d'écraser avec une valeur aberrante.
+            if (newSpeed != 0xFFFF && newSpeed < 10000) currentSpeed = newSpeed;
+            if (newRpm != 0xFFFF && newRpm < 10000) currentRpm = newRpm;
+            speedToNotify = currentSpeed;
+            rpmToNotify = currentRpm;
+
+            if (rawMileage != 0xFFFFFF) {
+                currentMileageKm = rawMileage / 10.0d;
+                mileageToNotify = currentMileageKm;
+            }
+        }
+
+        notifyTelemetry(speedToNotify, rpmToNotify);
+        if (!Double.isNaN(mileageToNotify)) {
+            notifyMileageUpdated(mileageToNotify);
+        }
+    }
+
+    /**
+     * Lit un entier non signé en gros-boutiste (big-endian) dans un tableau d'octets.
+     *
+     * @param data   Le tableau source.
+     * @param offset L'index de départ.
+     * @param length Le nombre d'octets à lire (1 à 4).
+     * @return La valeur entière reconstituée.
+     */
+    private static int readBigEndianUnsigned(byte[] data, int offset, int length) {
+        int value = 0;
+        for (int i = 0; i < length; i++) {
+            value = (value << 8) | (data[offset + i] & 0xFF);
+        }
+        return value;
+    }
+
+    // ---------------------------------------------------------------------------------------
 
     /**
      * Classe interne fournissant l'instance du service aux composants clients lors du binding.
@@ -78,16 +340,19 @@ public class CarTelemetryService extends Service {
     }
 
     /**
-     * Ajoute un nouvel abonné à la liste de diffusion des événements du véhicule.
-     * Transmet immédiatement à ce nouvel abonné l'état actuel du contact et de la télémétrie.
+     * Ajoute un nouvel abonné à la liste de diffusion des événements de télémétrie.
+     * Transmet immédiatement à ce nouvel abonné les dernières valeurs connues.
      *
      * @param listener L'écouteur à ajouter.
      */
     public synchronized void addListener(CarTelemetryListener listener) {
         if (!listeners.contains(listener)) {
             listeners.add(listener);
-            listener.onAccStateChanged(isAccOn);
-            listener.onTelemetryUpdated(currentSpeed, currentRpm);
+            listener.onSpeedUpdated(currentSpeed);
+            listener.onRpmUpdated(currentRpm);
+            if (currentMileageKm >= 0d) {
+                listener.onMileageUpdated(currentMileageKm);
+            }
         }
     }
 
@@ -101,116 +366,29 @@ public class CarTelemetryService extends Service {
     }
 
     /**
-     * Récepteur d'intentions chargé de capter les diffusions (broadcasts) du système autoradio.
-     * Gère les événements d'allumage/extinction (ACC) et délègue le traitement des données du bus CAN
-     * aux méthodes spécialisées.
-     */
-    private final BroadcastReceiver carReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (action == null) return;
-
-            switch (action) {
-                case "com.qf.action.ACC_ON":
-                    handleAccOnEvent();
-                    break;
-
-                case "com.qf.action.ACC_OFF":
-                    handleAccOffEvent();
-                    break;
-
-                case "com.qf.vehicle.action.DATA_SHARE":
-                    handleDataShareEvent(intent);
-                    break;
-            }
-        }
-    };
-
-    /**
-     * Traite l'événement de mise sous tension du contact (ACC ON).
-     * Met à jour l'état interne et notifie tous les abonnés.
-     */
-    private void handleAccOnEvent() {
-        CarLog.i(TAG, "Receive: com.qf.action.ACC_ON");
-
-        currentSpeed = 0;
-        currentRpm = 0;
-        notifyTelemetry(currentSpeed, currentRpm);
-
-        isAccOn = true;
-        notifyAccChanged(true);
-    }
-
-    /**
-     * Traite l'événement de coupure du contact (ACC OFF).
-     * Réinitialise les données de télémétrie (vitesse et RPM) à zéro, met à jour l'état interne
-     * et notifie tous les abonnés de ces changements.
-     */
-    private void handleAccOffEvent() {
-        CarLog.i(TAG, "Receive: com.qf.action.ACC_OFF");
-
-        isAccOn = false;
-        notifyAccChanged(false);
-    }
-
-    /**
-     * Traite la réception d'une trame de partage de données du véhicule.
-     * Décode les octets du bus CAN (vitesse et RPM) ou récupère les valeurs simulées,
-     * filtre les valeurs aberrantes (erreurs de trame) et notifie les abonnés.
-     *
-     * @param intent L'intention contenant le tableau d'octets de la télémétrie.
-     */
-    private void handleDataShareEvent(Intent intent) {
-        byte[] data = intent.getByteArrayExtra("extra_DATA_SHARE");
-
-        int newSpeed = currentSpeed;
-        int newRpm = currentRpm;
-
-        if (data != null && data.length > 10) {
-            newSpeed = ((data[7] & 0xFF) << 8) | (data[8] & 0xFF);
-            newRpm = ((data[9] & 0xFF) << 8) | (data[10] & 0xFF);
-        } else {
-            newSpeed = intent.getIntExtra("speed", currentSpeed);
-            newRpm = intent.getIntExtra("rpm", currentRpm);
-        }
-
-        if (newSpeed < 10000) currentSpeed = newSpeed;
-        if (newRpm < 10000) currentRpm = newRpm;
-
-        notifyTelemetry(currentSpeed, currentRpm);
-    }
-
-    /**
-     * Notifie tous les abonnés d'un changement d'état du contact du véhicule.
-     *
-     * @param accOn L'état du contact (true = allumé, false = coupé).
-     */
-    private synchronized void notifyAccChanged(boolean accOn) {
-        for (CarTelemetryListener listener : listeners) {
-            listener.onAccStateChanged(accOn);
-        }
-    }
-
-    /**
      * Notifie tous les abonnés d'une mise à jour des données de vitesse et de régime moteur.
+     * Les deux valeurs proviennent de la même trame CAN, elles sont donc notifiées ensemble dans
+     * une seule itération de la liste d'abonnés (chacun n'implémentant que ce dont il a besoin).
      *
      * @param speed La vitesse en km/h.
      * @param rpm   Le régime en tr/min.
      */
     private synchronized void notifyTelemetry(int speed, int rpm) {
         for (CarTelemetryListener listener : listeners) {
-            listener.onTelemetryUpdated(speed, rpm);
+            listener.onSpeedUpdated(speed);
+            listener.onRpmUpdated(rpm);
         }
     }
 
     /**
-     * Vérifie de manière sécurisée si le contact de la voiture est actuellement mis.
+     * Notifie tous les abonnés d'une mise à jour du kilométrage total du véhicule.
      *
-     * @return true si le contact est allumé, false sinon.
+     * @param totalKm Le kilométrage total en kilomètres.
      */
-    public synchronized boolean isAccOn() {
-        return isAccOn;
+    private synchronized void notifyMileageUpdated(double totalKm) {
+        for (CarTelemetryListener listener : listeners) {
+            listener.onMileageUpdated(totalKm);
+        }
     }
 
     /**
@@ -232,52 +410,34 @@ public class CarTelemetryService extends Service {
     }
 
     /**
-     * Initialise le service.
-     * Modifie les paramètres système pour forcer la réception des événements CAN et enregistre le récepteur.
+     * Récupère de manière sécurisée le dernier kilométrage total connu du véhicule.
+     *
+     * @return Le kilométrage total en kilomètres, ou -1 si aucune valeur n'a encore été reçue.
      */
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    public synchronized double getCurrentMileageKm() {
+        return currentMileageKm;
+    }
+
+    /**
+     * Initialise le service et lie le client AIDL du bus CAN pour la vitesse, le régime moteur
+     * et le kilométrage.
+     */
     @Override
     public void onCreate() {
         super.onCreate();
-        registerTelemetrySubscription();
-
-        IntentFilter filter = new IntentFilter();
-        filter.addAction("com.qf.action.ACC_ON");
-        filter.addAction("com.qf.action.ACC_OFF");
-        filter.addAction("com.qf.vehicle.action.DATA_SHARE");
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(carReceiver, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            registerReceiver(carReceiver, filter);
-        }
+        bindCanBus();
     }
 
     /**
-     * Modifie les paramètres globaux (Settings.Global) d'Android pour inscrire spécifiquement
-     * cette application sur la liste de diffusion de l'autoradio pour le partage des données de carrosserie.
-     */
-    private void registerTelemetrySubscription() {
-        try {
-            String pkgName = getPackageName();
-            String pkgs = Settings.Global.getString(getContentResolver(), "KeyAllPackages");
-            if (pkgs == null || pkgs.isEmpty()) {
-                pkgs = pkgName;
-            } else if (!pkgs.contains(pkgName)) {
-                pkgs += "," + pkgName;
-            }
-            Settings.Global.putString(getContentResolver(), "KeyAllPackages", pkgs);
-            Settings.Global.putInt(getContentResolver(), pkgName + "KeyShareCarbodyState", 1);
-        } catch (Exception ignored) {
-        }
-    }
-
-    /**
-     * Nettoie les ressources et désenregistre le récepteur système à la destruction du service.
+     * Nettoie la connexion au bus CAN à la destruction du service.
      */
     @Override
     public void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(carReceiver);
+        try {
+            unbindService(canBusConnection);
+        } catch (IllegalArgumentException ignored) {
+            // Service déjà délié (ex: com.qf.vehicle jamais connecté avec succès).
+        }
     }
 }

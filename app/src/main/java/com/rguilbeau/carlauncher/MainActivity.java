@@ -18,17 +18,17 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
+import com.rguilbeau.carlauncher.service.ignition.IgnitionService;
+import com.rguilbeau.carlauncher.service.ignition.IgnitionListener;
 import com.rguilbeau.carlauncher.service.TripService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
  * Activité principale du Car Launcher.
  * Gère l'initialisation de l'interface, la gestion des permissions
- * et l'écoute des événements du véhicule (télémétrie et réveil d'écran).
+ * et l'écoute des événements du véhicule (état du contact et réveil d'écran).
  */
-public class MainActivity extends AppCompatActivity implements CarTelemetryListener {
+public class MainActivity extends AppCompatActivity implements IgnitionListener {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
@@ -41,14 +41,14 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     private AutoPlayManager autoPlayManager;
 
     /**
-     * Service lié permettant de communiquer avec le bus CAN du véhicule pour récupérer la télémétrie (vitesse, régime moteur, état du contact).
+     * Service lié permettant de connaître l'état du contact (ACC) du véhicule.
      */
-    private CarTelemetryService telemetryService;
+    private IgnitionService ignitionService;
 
     /**
-     * Indicateur permettant de savoir si l'activité est actuellement connectée (bind) au service de télémétrie.
+     * Indicateur permettant de savoir si l'activité est actuellement connectée (bind) au service d'ignition.
      */
-    private boolean telemetryServiceBound = false;
+    private boolean ignitionServiceBound = false;
 
     /**
      * Intercepte l'événement de réveil de l'écran (ACTION_SCREEN_ON).
@@ -67,23 +67,23 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     };
 
     /**
-     * Gère la connexion avec le service de télémétrie de la voiture (CarTelemetryService).
-     * S'abonne aux événements de télémétrie une fois le service connecté.
+     * Gère la connexion avec le service d'état du contact du véhicule (IgnitionService).
+     * S'abonne aux changements d'ACC une fois le service connecté.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
-            telemetryService = binder.getService();
+            IgnitionService.LocalBinder binder = (IgnitionService.LocalBinder) service;
+            ignitionService = binder.getService();
             // L'abonnement déclenche instantanément onAccStateChanged(true) au démarrage
-            telemetryService.addListener(MainActivity.this);
-            telemetryServiceBound = true;
+            ignitionService.addListener(MainActivity.this);
+            ignitionServiceBound = true;
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            telemetryServiceBound = false;
-            telemetryService = null;
+            ignitionServiceBound = false;
+            ignitionService = null;
         }
     };
 
@@ -103,8 +103,8 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
 
         autoPlayManager = new AutoPlayManager(this);
 
-        // Connexion au service CANbus pour écouter l'allumage du contact
-        Intent intent = new Intent(this, CarTelemetryService.class);
+        // Connexion au service d'ignition pour écouter l'allumage du contact
+        Intent intent = new Intent(this, IgnitionService.class);
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
         if (PermissionManager.hasLocationPermission(this)) {
@@ -130,17 +130,6 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
                 autoPlayManager.startAutoplayDelayed();
             }
         }
-    }
-
-    /**
-     * Déclenchée lorsque les données de télémétrie (vitesse, régime moteur) sont mises à jour.
-     *
-     * @param speed La vitesse actuelle en km/h.
-     * @param rpm   Le régime moteur actuel en tr/min.
-     */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        // MainActivity n'a pas besoin de la vitesse ou des RPM, laissé vide intentionnellement
     }
 
     /**
@@ -219,10 +208,10 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     protected void onDestroy() {
         super.onDestroy();
         // Nettoyage des listeners et receivers pour éviter les fuites de mémoire
-        if (telemetryServiceBound && telemetryService != null) {
-            telemetryService.removeListener(this);
+        if (ignitionServiceBound && ignitionService != null) {
+            ignitionService.removeListener(this);
             unbindService(serviceConnection);
-            telemetryServiceBound = false;
+            ignitionServiceBound = false;
         }
         if (autoPlayManager != null) {
             autoPlayManager.stop();

@@ -8,7 +8,7 @@
 
 - **Reprise automatique de la musique (Autoplay) :** Au démarrage du véhicule, le launcher force automatiquement la reprise de la lecture en arrière-plan sur le lecteur multimédia défini par l'utilisateur dans les paramètres (Spotify, YouTube Music, etc.), sans nécessiter la moindre action manuelle.
 
-- **Gestion intelligente des trajets (Smart Reset) :** Le système surveille les actions de contact du véhicule (allumage et coupure du moteur) pour enregistrer de manière autonome les sessions de conduite. Un algorithme de Smart Reset se charge de réinitialiser intelligemment les statistiques journalières (kilomètres parcourus, temps de conduite) entre deux trajets éloignés dans le temps.
+- **Gestion intelligente des trajets (Smart Reset) :** Le système surveille les actions de contact du véhicule (allumage et coupure du moteur) et le kilométrage total remonté par le bus CAN pour enregistrer de manière autonome les sessions de conduite. Un algorithme de Smart Reset se charge de réinitialiser intelligemment les statistiques journalières (kilomètres parcourus, temps de conduite) entre deux trajets éloignés dans le temps.
 
 - **Diagnostic et Exportation des logs par QR Code :** Une vue dédiée (LogViewerActivity) permet de consulter les journaux de l'application. Pour éviter la saturation de la mémoire, un système de rotation ne conserve que les événements récents. Ces logs peuvent être exportés vers un serveur pour diagnostic : l'application génère alors un QR Code à l'écran permettant de récupérer instantanément les données sur un smartphone.
 
@@ -16,14 +16,16 @@
 ```mermaid
 graph TD
     subgraph SOURCING ["1. Entrées & Capteurs"]
-        CAN["Information véhicule<br/>(Broadcast com.qf.action.xx)"]
-        GPS["Position GPS<br/>(API Android Location)"]
+        ACC["Contact véhicule<br/>(Broadcast com.qf.action.ACC_ON/OFF)"]
+        AIDL["Bus CAN véhicule<br/>(AIDL com.qf.vehicle - vitesse/RPM/km)"]
+        GPS["Position GPS<br/>(FusedLocationProvider)"]
         ANDROID["Notifications Android<br/>(Média & Maps)"]
     end
 
     subgraph SERVICES ["2. Services d'Arrière-Plan"]
-        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact)"]
-        SERVICE_TRIP["Service Trajet<br/>(Distance, Chrono)"]
+        SERVICE_IGN["IgnitionService<br/>(État du contact)"]
+        SERVICE_TEL["CarTelemetryService<br/>(Vitesse, RPM, Kilométrage)"]
+        SERVICE_TRIP["TripService<br/>(Distance, Chrono)"]
         SERVICE_NOTIF["Service Notification<br/>(Musique, Navigation Maps)"]
     end
 
@@ -49,13 +51,15 @@ graph TD
     end
 
 %% Connexions Entrées -> Services
-    CAN --> SERVICE_CAN
-    GPS --> SERVICE_TRIP
+    ACC --> SERVICE_IGN
+    AIDL --> SERVICE_TEL
     ANDROID --> SERVICE_NOTIF
+    GPS --> CARD_WEATHER
 
-%% Connexions Services -> Cartes
-    SERVICE_CAN --> CARD_SPEED
-    SERVICE_CAN --> SERVICE_TRIP
+%% Connexions Services -> Cartes / autres services
+    SERVICE_IGN --> SERVICE_TRIP
+    SERVICE_TEL --> CARD_SPEED
+    SERVICE_TEL --> SERVICE_TRIP
     SERVICE_TRIP --> CARD_TRIP
     SERVICE_NOTIF --> CARD_MUSIC
     SERVICE_NOTIF --> CARD_MAPS
@@ -77,9 +81,62 @@ graph TD
 
 Ce schéma résume le fonctionnement global du Car Launcher, structuré en couches indépendantes pour garantir modularité et réactivité.
 
-En amont, les **services d'arrière-plan** interceptent les événements système et réseau (trame CANbus du véhicule, coordonnées GPS, notifications) pour les traiter en tâche de fond. Les **cartes UI** s'abonnent directement à ces services et mettent à jour leurs affichages de manière autonome (vitesse, trajet, lecteur multimédia, navigation et météo).
+En amont, les **services d'arrière-plan** interceptent les événements système et réseau (contact et bus CAN du véhicule, coordonnées GPS, notifications) pour les traiter en tâche de fond. Les **cartes UI** s'abonnent directement à ces services et mettent à jour leurs affichages de manière autonome (vitesse, trajet, lecteur multimédia, navigation et météo).
 
 L'interactivité repose sur le **Design Pattern Strategy** : la carte bouton (`CardButton`) délègue son comportement à la stratégie configurée (`AppDrawerStrategy`, `DayNightStrategy` ou `ShortcutStrategy`). Cela permet d'ajouter ou de modifier des fonctionnalités de boutons sans toucher au code de l'interface graphique.
+
+`IgnitionService` et `CarTelemetryService` sont volontairement deux services distincts (et non un seul "service CAN") : l'état du contact (ACC ON/OFF) et la télémétrie du bus CAN utilisent deux mécanismes de transport radicalement différents côté autoradio (broadcast système vs interface AIDL) — voir la section suivante. `TripService` s'abonne aux deux pour calculer la distance et le temps de conduite.
+
+## Télémétrie CAN bus (AIDL)
+
+L'autoradio embarque une application système (`com.qf.vehicle`, package du constructeur "QF", cf. `hardware_dump/com.qf.vehicule.apk`) qui communique avec le boîtier CANbus. Elle expose un service AIDL, `ICanBusServiceFeature` (action `com.qf.vehicle.service.ACTION_CAN_SERVICE`, exporté sans permission particulière), que `CarTelemetryService` utilise pour recevoir en temps réel la vitesse, le régime moteur et le kilométrage total — sans limite de fréquence, au rythme réel du bus CAN.
+
+Les événements de contact (`com.qf.action.ACC_ON` / `com.qf.action.ACC_OFF`) sont de simples broadcasts système, indépendants de ce service AIDL, gérés séparément par `IgnitionService`.
+
+### Fonctionnement du client AIDL (`CarTelemetryService`)
+
+`CarTelemetryService` implémente un **client AIDL minimal fait main**, en `Parcel`/`IBinder.transact()` brut, sans fichier `.aidl` généré ni classe copiée depuis `com.qf.vehicle`. Seules les 2 transactions réellement nécessaires sont reproduites, avec les codes exacts identifiés par rétro-ingénierie (décompilation JADX) du `Stub` du SDK constructeur :
+
+| Étape | Détail |
+|---|---|
+| **Bind** | `bindService` explicite sur l'action `com.qf.vehicle.service.ACTION_CAN_SERVICE`, package `com.qf.vehicle`. Aucune permission requise (service exporté sans `android:permission`). |
+| **Init SDK** (code transaction `1`) | Envoie `demandType=0` (mode "App"), nom `"QFApp"` et une clé codée en dur (`832ded976b28e7ee81a688a4f4095331`) — couple attendu par le SDK constructeur pour activer la distribution des trames. |
+| **Abonnement** (code `11`) | Enregistre un callback (`Binder` maison implémentant `onTransact`) qui recevra chaque trame décodée sans throttle. |
+| **Réception** (code `2`, `onGetPackedData`) | Le callback reçoit un `byte[]` : en-tête `0x98`, type de trame (`2` = CarbodyState), puis vitesse (offset 8, 2 octets), RPM (offset 10, 2 octets) et kilométrage total (offset 16, 3 octets, en dixièmes de km). |
+
+## Simuler le bus CAN sans la vraie tête d'unité (module `fake-vehicle`)
+
+Le protocole AIDL ci-dessus ne peut pas être simulé par un simple `adb shell am broadcast` : contrairement à un broadcast, c'est un `bindService()` vers un package précis (`com.qf.vehicle`), absent d'un émulateur générique. Pour tester `CarTelemetryService` sans la vraie tablette, le projet inclut un second module Gradle, **`fake-vehicle`**, qui usurpe ce package et reproduit le strict minimum du protocole côté serveur.
+
+> ⚠️ **Ce module usurpe le package `com.qf.vehicle`.** À installer **uniquement sur émulateur ou appareil de test** — jamais sur la vraie tablette, où il entrerait en conflit avec l'application système du même nom.
+
+### Installer et lancer le stub
+
+Le module possède sa propre `MainActivity` (simple écran de statut, sans dépendance AppCompat) : il se lance donc comme une app normale depuis Android Studio.
+
+* **Depuis Android Studio :** sélectionner la configuration de run `fake-vehicle`, puis ▶️ (Run) ou 🐞 (Debug) comme n'importe quelle app.
+
+Le service (`VehicleServiceStub`) démarre automatiquement dès que `CarTelemetryService` (côté CarLauncher) s'y connecte — inutile de le lancer manuellement au préalable. L'écran de statut affiche en direct si CarLauncher est connecté, si le SDK est initialisé, et les dernières valeurs vitesse/RPM/km reçues.
+
+### Simuler le contact (ACC ON / OFF)
+
+Ce sont de simples broadcasts système, indépendants du stub :
+
+```bash
+adb shell am broadcast -a com.qf.action.ACC_ON
+adb shell am broadcast -a com.qf.action.ACC_OFF
+```
+
+### Simuler la vitesse, le RPM et le kilométrage
+
+Le stub pousse une trame CarbodyState **à la demande**, via un broadcast de contrôle qui lui est propre (`com.qf.vehicle.debug.SET_CARBODY_STATE`) :
+
+```bash
+adb shell am broadcast -a com.qf.vehicle.debug.SET_CARBODY_STATE \
+    --ei speed 87 --ei rpm 2300 --ef mileage 217005.1
+```
+
+Chaque extra (`speed`, `rpm`, `mileage`) est optionnel : une valeur non précisée conserve sa dernière valeur connue (changer uniquement la vitesse ne réinitialise donc pas le RPM ou le kilométrage). Le stub pousse aussi automatiquement l'état courant dès que `CarTelemetryService` s'enregistre, sans attendre une première commande.
 
 ## Extraction Matérielle (`hardware_dump`)
 
@@ -95,11 +152,11 @@ Ces fichiers servent de base de référence pour le *reverse-engineering* du sys
 
 **Applications et frameworks (pour décompilation) :**
 * `framework.apk` : Le cœur du système Android modifié par le constructeur. Utile pour analyser les comportements non standards (comme les restrictions du gestionnaire de fenêtres).
-* `com.qf.vehicule.apk` : Gère la communication directe avec le boîtier CANbus (permet de retrouver les actions pour la vitesse, le régime moteur, le contact).
+* `com.qf.vehicule.apk` : Gère la communication directe avec le boîtier CANbus (permet de retrouver les actions pour la vitesse, le régime moteur, le contact, ainsi que le service AIDL `ICanBusServiceFeature` — voir la section "Télémétrie CAN bus" ci-dessus).
 * `com.qf.carsettings.apk` : Application des paramètres natifs du véhicule.
 * `com.qf.commonfunc.apk` : Regroupe les fonctions communes et les services en arrière-plan du constructeur (gestion des commandes au volant, radio, etc.).
 
-> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés, indispensables pour intégrer la télémétrie dans le Launcher.
+> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents`, des `Broadcasts` et des interfaces AIDL cachées, indispensables pour intégrer la télémétrie dans le Launcher.
 
 ## Compilation (Release)
 
@@ -125,6 +182,8 @@ La configuration de la signature étant déjà codée en dur dans le fichier `bu
 4. Choisir **Release** puis cliquer sur le bouton **Create**.
 5. L'application prête à être déployée sera générée ici : `app/build/outputs/apk/release/app-release.apk`.
 
+> **Note :** Ces étapes concernent uniquement le module `app` (CarLauncher). Le module `fake-vehicle` est un outil de développement/test, jamais signé ni publié en release.
+
 ### Déploiement Automatisé (GitHub Actions)
 
 Ce projet utilise GitHub Actions pour compiler, signer et publier (création de release) automatiquement l'application à chaque nouvelle version. L'APK généré est ensuite mis à disposition de l'autoradio qui le téléchargera via son système de mise à jour interne.
@@ -139,14 +198,14 @@ L'installation de cette application ne se fait pas de manière classique. Elle d
 
 ### priv-app
 
-Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour trois raisons majeures :
+Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour deux raisons majeures :
 
-1. **Lecture des données de la voiture (Télémétrie) :**
-   Pour recevoir la vitesse, le régime moteur (RPM) et les signaux de contact (ACC ON/OFF), l'application doit s'abonner aux flux du boîtier CANbus. Cela nécessite de modifier des paramètres restreints d'Android (`Settings.Global`) via la permission critique `WRITE_SECURE_SETTINGS`. Une application `priv-app` obtient cette permission automatiquement sans blocage de sécurité.
-2. **Immunité contre la fermeture (Task Killer) :**
-   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, notre service de chronomètre devient intouchable. Il tournera toujours en tâche de fond pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
-3. **Mises à jour (Self-Update) :**
+1. **Immunité contre la fermeture (Task Killer) :**
+   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, nos services (`IgnitionService`, `CarTelemetryService`, `TripService`) deviennent intouchables. Ils tournent toujours en tâche de fond pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
+2. **Mises à jour (Self-Update) :**
    Ce statut octroie la permission `INSTALL_PACKAGES`, permettant à l'application de télécharger ses propres mises à jour depuis GitHub et de les installer en arrière-plan, sans aucune intervention de l'utilisateur à l'écran.
+
+> **Note :** La télémétrie (voir "Télémétrie CAN bus" ci-dessus) ne nécessite aucune permission particulière — le service `com.qf.vehicle` s'y bind sans permission requise. `WRITE_SECURE_SETTINGS` reste déclarée dans le manifest mais n'est plus strictement nécessaire pour cette fonctionnalité.
 
 ### Permissions système
 
@@ -246,25 +305,3 @@ Pour s'assurer que l'installation en `priv-app` a fonctionné :
 4. Observer le bouton **Désinstaller** :
 - S'il est **grisé, absent, ou remplacé par "Désactiver"** : L'installation a réussi, l'application fait désormais partie intégrante du système d'usine.
 - S'il est cliquable normalement (et permet de supprimer l'application) : L'installation a échoué, l'application est installée de manière classique. Vérifier les logs du script `install.bat` pour identifier le blocage lors de la copie.
-
-## Simulation et Tests ADB (Télémétrie & Veille)
-
-Il est possible de simuler les signaux du véhicule (CANbus/MCU QF01) via **ADB** afin de tester le fonctionnement du `CarTelemetryService` et du `TripService` sur émulateur sans être raccordé au véhicule.
-
-* **Activer le contact (ACC ON) :**
-
-```bash
-adb shell am broadcast -a com.qf.action.ACC_ON
-```
-
-* **Désactiver le contact (ACC OFF) :**
-
-```bash
-adb shell am broadcast -a com.qf.action.ACC_OFF
-```
-
-* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2200 RPM) :**
-
-```bash
-adb shell am broadcast -a com.qf.vehicle.action.DATA_SHARE --ei speed 60 --ei rpm 2200
-```

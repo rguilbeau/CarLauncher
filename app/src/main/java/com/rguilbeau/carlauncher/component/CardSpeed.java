@@ -139,27 +139,27 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     }
 
     /**
-     * Déclenchée lors d'un changement d'état du contact du véhicule.
-     *
-     * @param isAccOn true si le contact est mis, false sinon.
-     */
-    @Override
-    public void onAccStateChanged(boolean isAccOn) {
-    }
-
-    /**
-     * Reçoit les nouvelles valeurs de télémétrie et met à jour l'affichage sur le thread principal.
+     * Reçoit la nouvelle vitesse instantanée et met à jour l'affichage sur le thread principal.
      *
      * @param speed La vitesse instantanée du véhicule en km/h.
-     * @param rpm   Le régime moteur en tr/min.
      */
     @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
+    public void onSpeedUpdated(int speed) {
         post(() -> {
             if (txtSpeed != null) {
                 txtSpeed.setText(String.valueOf(speed));
             }
+        });
+    }
 
+    /**
+     * Reçoit le nouveau régime moteur et met à jour l'affichage sur le thread principal.
+     *
+     * @param rpm Le régime moteur en tr/min.
+     */
+    @Override
+    public void onRpmUpdated(int rpm) {
+        post(() -> {
             if (progressRpm != null) {
                 progressRpm.setProgress(Math.min(rpm, 6500), true);
             }

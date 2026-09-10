@@ -161,6 +161,9 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                             prefs.edit()
                                     .putFloat(TripService.KEY_DISTANCE, 0f)
                                     .putLong(TripService.KEY_DRIVE_TIME, 0L)
+                                    // Efface le point de référence kilométrique : TripService le
+                                    // recalera sur le prochain relevé d'odomètre reçu du bus CAN.
+                                    .putString(TripService.KEY_REFERENCE_MILEAGE_KM, Double.toString(TripService.NO_REFERENCE_MILEAGE))
                                     .apply();
 
                             Toast.makeText(getContext(), "Compteur réinitialisé !", Toast.LENGTH_SHORT).show();

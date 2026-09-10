@@ -78,9 +78,15 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Service d'arrière-plan communiquant avec le bus CAN du véhicule pour la vitesse, les RPM et le contact (ACC) -->
+        <!-- Service d'arrière-plan communiquant avec le bus CAN du véhicule pour la vitesse, les RPM et le kilométrage -->
         <service
             android:name=".service.telemetry.CarTelemetryService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Service d'arrière-plan écoutant l'état du contact du véhicule (ACC_ON / ACC_OFF) -->
+        <service
+            android:name=".service.ignition.IgnitionService"
             android:enabled="true"
             android:exported="false" />
 

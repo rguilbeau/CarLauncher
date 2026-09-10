@@ -1,22 +1,18 @@
 package com.rguilbeau.carlauncher.service;
 
-import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
-import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.SystemClock;
 
-import androidx.annotation.NonNull;
-
-import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.service.ignition.IgnitionListener;
+import com.rguilbeau.carlauncher.service.ignition.IgnitionService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
@@ -28,12 +24,24 @@ import java.util.Locale;
 /**
  * Service d'arrière-plan gérant l'enregistrement des statistiques de trajet.
  * <p>
- * S'abonne au {@link CarTelemetryService} pour détecter l'alimentation (ACC_ON/OFF).
+ * S'abonne à {@link IgnitionService} pour l'état du contact (ACC_ON/OFF) et à
+ * {@link CarTelemetryService} pour le kilométrage total du véhicule (odomètre), lu en temps réel
+ * sur le bus CAN.
+ * <p>
+ * La distance du trajet est calculée comme la différence entre le kilométrage total courant et un
+ * kilométrage de référence ("point zéro" du trajet en cours), plutôt que par accumulation de
+ * positions GPS : l'odomètre du véhicule est une source de vérité fiable, insensible à la perte de
+ * signal GPS (tunnels, parkings, zones urbaines denses) et à la dérive de précision.
+ * <p>
+ * Ce calcul se fait en {@code double} (et non {@code float}) : au-delà de quelques dizaines de
+ * milliers de km, un {@code float} (32 bits, ~7 chiffres significatifs) n'a plus la précision
+ * nécessaire pour distinguer des écarts de 0,1 km. Un {@code double} (~15-17 chiffres significatifs)
+ * offre une marge très largement suffisante pour n'importe quel kilométrage réaliste.
+ * <p>
  * Le temps de conduite est comptabilisé via le chronomètre matériel (SystemClock.elapsedRealtime)
  * pour éviter toute corruption lors des ajustements d'horloge GPS/réseau.
- * </p>
  */
-public class TripService extends Service implements LocationListener, CarTelemetryListener {
+public class TripService extends Service implements IgnitionListener, CarTelemetryListener {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation de ce service.
@@ -46,7 +54,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
     public static final String PREFS_NAME = "CarLauncherPrefs";
 
     /**
-     * Clé des préférences pour stocker la distance totale parcourue.
+     * Clé des préférences pour stocker la distance du trajet en cours, en mètres.
      */
     public static final String KEY_DISTANCE = "distance";
 
@@ -66,19 +74,28 @@ public class TripService extends Service implements LocationListener, CarTelemet
     public static final String KEY_LAST_ACC_OFF = "lastAccOffTime";
 
     /**
-     * Vitesse minimale (en km/h) issue du bus CAN nécessaire pour considérer que le véhicule se déplace.
+     * Clé des préférences pour stocker le kilométrage total (odomètre CAN) servant de point zéro
+     * au trajet actuellement comptabilisé. Toute distance affichée vaut (kilométrage courant - cette
+     * référence). Un composant externe (ex: {@code CardTrip}) qui souhaite forcer une remise à zéro
+     * du trajet doit écrire {@link #NO_REFERENCE_MILEAGE} sur cette clé en plus de {@link #KEY_DISTANCE}.
+     * <p>
+     * Stockée sous forme de {@link String} (via {@code Double.toString}/{@code parseDouble}) :
+     * {@link SharedPreferences} n'a pas d'équivalent {@code putDouble}/{@code getDouble} natif.
      */
-    private static final float MIN_SPEED_KMH = 4.0f;
+    public static final String KEY_REFERENCE_MILEAGE_KM = "refMileageKm";
 
     /**
-     * Distance minimale (en mètres) requise entre deux relevés GPS successifs pour être ajoutée au total.
+     * Valeur sentinelle indiquant qu'aucun kilométrage de référence n'est encore défini : le
+     * prochain relevé d'odomètre reçu du bus CAN servira de nouveau point de départ (distance = 0).
      */
-    private static final float MIN_DISTANCE_M = 2.0f;
+    public static final double NO_REFERENCE_MILEAGE = -1d;
 
     /**
-     * Rayon maximal d'imprécision (en mètres) toléré par le capteur GPS.
+     * Intervalle (en millisecondes) entre deux sauvegardes incrémentales du temps de conduite
+     * pendant que le contact est mis, afin de limiter la perte de données en cas d'arrêt brutal
+     * du service (kill système, crash) avant la prochaine coupure de contact.
      */
-    private static final float MAX_ACCURACY_M = 20.0f;
+    private static final long DRIVE_TIME_TICK_MS = 30_000L;
 
     /**
      * Gestionnaire des préférences pour l'écriture et la lecture persistante des données du trajet.
@@ -86,29 +103,40 @@ public class TripService extends Service implements LocationListener, CarTelemet
     private SharedPreferences prefs;
 
     /**
-     * Gestionnaire système Android fournissant les mises à jour de la localisation géographique.
-     */
-    private LocationManager locationManager;
-
-    /**
-     * Conserve en mémoire la dernière position GPS valide pour calculer la distance avec la nouvelle.
-     */
-    private Location lastLocation = null;
-
-    /**
      * Point de repère temporel monotone (basé sur le quartz système) servant de chronomètre pour le temps de conduite.
+     * Accédé uniquement depuis le thread principal (callbacks ACC + tick périodique).
      */
     private long lastTickTime = 0L;
 
     /**
-     * Dernière vitesse connue transmise par le bus CAN, utilisée pour valider le mouvement réel.
-     */
-    private float currentSpeedKmH = 0f;
-
-    /**
      * État actuel de l'alimentation du véhicule (true = contact mis, false = contact coupé).
+     * Accédé uniquement depuis le thread principal.
      */
     private boolean isAccOn = false;
+
+    /**
+     * Kilométrage de référence en mémoire (copie de {@link #KEY_REFERENCE_MILEAGE_KM}), utilisé
+     * pour calculer la distance sans relire les préférences à chaque trame CAN. Accédé à la fois
+     * depuis le thread Binder (trames CAN) et le thread principal (reset journalier) : accès
+     * synchronisé.
+     */
+    private double referenceMileageKm = NO_REFERENCE_MILEAGE;
+
+    /**
+     * Dernier kilométrage total reçu du bus CAN. Permet d'ignorer les trames répétées (l'odomètre
+     * ne change réellement que tous les ~100 m) et d'éviter des écritures inutiles.
+     */
+    private double lastMileageKm = Double.NaN;
+
+    /**
+     * Référence vers le service d'état du contact du véhicule.
+     */
+    private IgnitionService ignitionService;
+
+    /**
+     * Indicateur d'état précisant si le TripService est actuellement attaché au service d'ignition.
+     */
+    private boolean isIgnitionBound = false;
 
     /**
      * Référence vers le service central de télémétrie de la voiture.
@@ -118,18 +146,121 @@ public class TripService extends Service implements LocationListener, CarTelemet
     /**
      * Indicateur d'état précisant si le TripService est actuellement attaché au service de télémétrie.
      */
-    private boolean isBound = false;
+    private boolean isTelemetryBound = false;
+
+    /**
+     * Boucle de rappel périodique (thread principal) qui sauvegarde incrémentalement le temps de
+     * conduite pendant que le contact est mis, indépendamment de toute source GPS.
+     */
+    private final Handler tickHandler = new Handler(Looper.getMainLooper());
+    private final Runnable driveTimeTick = new Runnable() {
+        @Override
+        public void run() {
+            if (isAccOn && lastTickTime > 0) {
+                long now = SystemClock.elapsedRealtime();
+                accumulateTime(now - lastTickTime);
+                lastTickTime = now;
+            }
+            tickHandler.postDelayed(this, DRIVE_TIME_TICK_MS);
+        }
+    };
+
+    /**
+     * Détecte une remise à zéro du kilométrage de référence déclenchée par un autre composant
+     * (ex: {@code CardTrip} lors d'un reset manuel) et recharge la valeur en mémoire en conséquence.
+     * <p>
+     * Si la référence vient d'être effacée (sentinelle) et que le kilométrage courant est déjà
+     * connu, rebase immédiatement dessus plutôt que d'attendre la prochaine trame CAN : sans ça,
+     * cette prochaine trame deviendrait elle-même le nouveau "zéro", décalant la distance affichée
+     * d'un relevé.
+     */
+    private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener =
+            (sharedPreferences, key) -> {
+                if (!KEY_REFERENCE_MILEAGE_KM.equals(key)) return;
+
+                double newReference = parseDoubleOrDefault(
+                        sharedPreferences.getString(KEY_REFERENCE_MILEAGE_KM, null), NO_REFERENCE_MILEAGE);
+
+                boolean alreadyUpToDate;
+                synchronized (this) {
+                    alreadyUpToDate = (referenceMileageKm == newReference);
+                }
+                if (alreadyUpToDate) return; // Évite de retraiter notre propre écriture de rebase ci-dessous.
+
+                if (newReference == NO_REFERENCE_MILEAGE) {
+                    double rebased = rebaseOnKnownMileageOrSentinel();
+                    if (rebased >= 0d) {
+                        prefs.edit()
+                                .putString(KEY_REFERENCE_MILEAGE_KM, Double.toString(rebased))
+                                .putFloat(KEY_DISTANCE, 0f)
+                                .apply();
+                    }
+                } else {
+                    synchronized (this) {
+                        referenceMileageKm = newReference;
+                        lastMileageKm = Double.NaN;
+                    }
+                }
+            };
+
+    /**
+     * Rebase la référence sur le kilométrage courant si celui-ci est déjà connu (service de
+     * télémétrie déjà connecté et ayant reçu au moins une trame), sinon retombe sur la valeur
+     * sentinelle en attendant la prochaine trame CAN.
+     *
+     * @return Le kilométrage utilisé comme nouvelle référence, ou {@link #NO_REFERENCE_MILEAGE}.
+     */
+    private double rebaseOnKnownMileageOrSentinel() {
+        double knownMileage = (telemetryService != null) ? telemetryService.getCurrentMileageKm() : -1d;
+        double newReference = (knownMileage >= 0d) ? knownMileage : NO_REFERENCE_MILEAGE;
+        synchronized (this) {
+            referenceMileageKm = newReference;
+            lastMileageKm = Double.NaN;
+        }
+        return newReference;
+    }
+
+    /**
+     * Parse une chaîne en {@code double}, ou retourne une valeur par défaut si {@code null} ou
+     * invalide (ex: première exécution, aucune référence encore enregistrée).
+     */
+    private static double parseDoubleOrDefault(String value, double defaultValue) {
+        if (value == null) return defaultValue;
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Gère le cycle de vie de la connexion avec le service d'état du contact.
+     */
+    private final ServiceConnection ignitionConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            IgnitionService.LocalBinder binder = (IgnitionService.LocalBinder) service;
+            ignitionService = binder.getService();
+            ignitionService.addListener(TripService.this);
+            CarLog.d(TAG, "TripService connected to IgnitionService.");
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            ignitionService = null;
+        }
+    };
 
     /**
      * Gère le cycle de vie de la connexion avec le service de télémétrie.
      */
-    private final ServiceConnection serviceConnection = new ServiceConnection() {
+    private final ServiceConnection telemetryConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
             telemetryService.addListener(TripService.this);
-            CarLog.d(TAG, "TripService connected to CANbus.");
+            CarLog.d(TAG, "TripService connected to CarTelemetryService.");
         }
 
         @Override
@@ -138,23 +269,17 @@ public class TripService extends Service implements LocationListener, CarTelemet
         }
     };
 
-    @SuppressLint("MissingPermission")
     @Override
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        referenceMileageKm = parseDoubleOrDefault(prefs.getString(KEY_REFERENCE_MILEAGE_KM, null), NO_REFERENCE_MILEAGE);
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener);
 
-        Intent intent = new Intent(this, CarTelemetryService.class);
-        isBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        isIgnitionBound = bindService(new Intent(this, IgnitionService.class), ignitionConnection, Context.BIND_AUTO_CREATE);
+        isTelemetryBound = bindService(new Intent(this, CarTelemetryService.class), telemetryConnection, Context.BIND_AUTO_CREATE);
 
-        try {
-            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            if (locationManager != null && PermissionManager.hasLocationPermission(this)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this);
-            }
-        } catch (Exception e) {
-            CarLog.e(TAG, "Error initializing GPS", e);
-        }
+        tickHandler.postDelayed(driveTimeTick, DRIVE_TIME_TICK_MS);
     }
 
     /**
@@ -199,9 +324,48 @@ public class TripService extends Service implements LocationListener, CarTelemet
         }
     }
 
+    /**
+     * Reçoit chaque relevé de kilométrage total (odomètre) du bus CAN et met à jour la distance du
+     * trajet en cours, calculée comme la différence avec le kilométrage de référence.
+     * <p>
+     * Appelée sur un thread du pool Binder (voir {@code CarTelemetryService}), pas le thread principal.
+     *
+     * @param totalKm Le kilométrage total actuel du véhicule, en kilomètres.
+     */
     @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        this.currentSpeedKmH = speed;
+    public void onMileageUpdated(double totalKm) {
+        if (totalKm < 0d) return;
+
+        double distanceKm;
+        boolean referenceJustEstablished;
+        synchronized (this) {
+            if (totalKm == lastMileageKm) {
+                return; // Trame répétée : l'odomètre n'a pas encore franchi le prochain 0,1 km.
+            }
+            lastMileageKm = totalKm;
+
+            referenceJustEstablished = (referenceMileageKm == NO_REFERENCE_MILEAGE);
+            if (referenceJustEstablished) {
+                referenceMileageKm = totalKm;
+                distanceKm = 0d;
+            } else {
+                distanceKm = totalKm - referenceMileageKm;
+                if (distanceKm < 0d) {
+                    // Régression improbable (glitch de décodage, calculateur remplacé...) :
+                    // on ignore la trame plutôt que de faire reculer la distance affichée.
+                    CarLog.w(TAG, "Ignoring mileage regression: total=" + totalKm + " reference=" + referenceMileageKm);
+                    return;
+                }
+            }
+        }
+
+        float distanceMeters = (float) Math.round(distanceKm * 1000d);
+
+        SharedPreferences.Editor editor = prefs.edit().putFloat(KEY_DISTANCE, distanceMeters);
+        if (referenceJustEstablished) {
+            editor.putString(KEY_REFERENCE_MILEAGE_KM, Double.toString(totalKm));
+        }
+        editor.apply();
     }
 
     /**
@@ -230,53 +394,22 @@ public class TripService extends Service implements LocationListener, CarTelemet
             long offDurationHours = gapMillis / (1000 * 60 * 60);
 
             if (!today.equals(savedDate) && offDurationHours >= 3) {
+                // Rebase immédiat si le kilométrage CAN est déjà connu (service de télémétrie déjà
+                // connecté), sinon on retombe sur la valeur sentinelle : la prochaine trame reçue
+                // via onMileageUpdated établira le nouveau point de référence.
+                double newReference = rebaseOnKnownMileageOrSentinel();
+
                 prefs.edit()
                         .putFloat(KEY_DISTANCE, 0f)
                         .putLong(KEY_DRIVE_TIME, 0L)
                         .putString(KEY_SAVED_DATE, today)
+                        .putString(KEY_REFERENCE_MILEAGE_KM, Double.toString(newReference))
                         .apply();
 
                 CarLog.i(TAG, "Smart Reset executed: daily data reset.");
             }
         } catch (Exception e) {
             CarLog.e(TAG, "Smart Reset error", e);
-        }
-    }
-
-    /**
-     * Calcule le temps et la distance parcourue à chaque mise à jour GPS.
-     *
-     * @param location L'objet Location contenant les nouvelles coordonnées.
-     */
-    @Override
-    public void onLocationChanged(@NonNull Location location) {
-        try {
-            long monotonicNow = SystemClock.elapsedRealtime();
-
-            // Mise à jour continue du temps de trajet en roulant via le chronomètre matériel
-            if (isAccOn && lastTickTime > 0) {
-                long deltaMillis = monotonicNow - lastTickTime;
-                accumulateTime(deltaMillis);
-                lastTickTime = monotonicNow;
-            }
-
-            // Filtrage des positions GPS considérées comme trop imprécises
-            if (!location.hasAccuracy() || location.getAccuracy() > MAX_ACCURACY_M) return;
-
-            // Calcul et accumulation de la distance validée
-            if (lastLocation != null) {
-                float distance = lastLocation.distanceTo(location);
-
-                if (currentSpeedKmH >= MIN_SPEED_KMH && distance > MIN_DISTANCE_M) {
-                    float totalDistance = prefs.getFloat(KEY_DISTANCE, 0f) + distance;
-                    prefs.edit().putFloat(KEY_DISTANCE, totalDistance).apply();
-                    lastLocation = location;
-                }
-            } else {
-                lastLocation = location;
-            }
-        } catch (Exception e) {
-            CarLog.e(TAG, "Error calculating trip", e);
         }
     }
 
@@ -288,17 +421,22 @@ public class TripService extends Service implements LocationListener, CarTelemet
     @Override
     public void onDestroy() {
         super.onDestroy();
+        tickHandler.removeCallbacks(driveTimeTick);
+        prefs.unregisterOnSharedPreferenceChangeListener(prefsListener);
         try {
-            if (isBound) {
+            if (isIgnitionBound) {
+                if (ignitionService != null) {
+                    ignitionService.removeListener(this);
+                }
+                unbindService(ignitionConnection);
+                isIgnitionBound = false;
+            }
+            if (isTelemetryBound) {
                 if (telemetryService != null) {
                     telemetryService.removeListener(this);
                 }
-                unbindService(serviceConnection);
-                isBound = false;
-            }
-
-            if (locationManager != null) {
-                locationManager.removeUpdates(this);
+                unbindService(telemetryConnection);
+                isTelemetryBound = false;
             }
         } catch (Exception e) {
             CarLog.e(TAG, "Erreur nettoyage onDestroy", e);
@@ -308,17 +446,5 @@ public class TripService extends Service implements LocationListener, CarTelemet
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {
-    }
-
-    @Override
-    public void onProviderEnabled(@NonNull String provider) {
-    }
-
-    @Override
-    public void onProviderDisabled(@NonNull String provider) {
     }
 }
