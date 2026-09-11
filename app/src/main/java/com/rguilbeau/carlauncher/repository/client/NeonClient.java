@@ -1,5 +1,6 @@
 package com.rguilbeau.carlauncher.repository.client;
 
+import com.rguilbeau.carlauncher.BuildConfig;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.sql.Connection;
@@ -14,7 +15,7 @@ public class NeonClient implements IClient {
     private static synchronized Connection getConnection() throws SQLException {
         if (connection == null || connection.isClosed() || !connection.isValid(2)) {
             CarLog.i(TAG, "Ouverture d'une nouvelle connexion globale à la base de données...");
-            connection = DriverManager.getConnection("URL", "USER", "PASSWORD");
+            connection = DriverManager.getConnection(BuildConfig.DB_URL, BuildConfig.DB_USER, BuildConfig.DB_PASSWORD);
         }
         return connection;
     }

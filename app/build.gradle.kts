@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -5,26 +7,43 @@ plugins {
 val code = project.findProperty("versionCode")?.toString()?.toInt() ?: 1
 val name = project.findProperty("versionName")?.toString() ?: "0.0.0-dev"
 
+// Secrets locaux (local.properties, non commité) avec repli sur les variables d'environnement (CI)
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+fun secret(key: String): String = localProperties.getProperty(key) ?: System.getenv(key) ?: ""
+
 android {
     namespace = "com.rguilbeau.carlauncher"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.rguilbeau.carlauncher"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = code
         versionName = name
 
+        buildConfigField("String", "DB_URL", "\"${secret("DB_URL")}\"")
+        buildConfigField("String", "DB_USER", "\"${secret("DB_USER")}\"")
+        buildConfigField("String", "DB_PASSWORD", "\"${secret("DB_PASSWORD")}\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {
         create("release") {
             storeFile = file("../release_key")
-            storePassword = "CarLauncher"
+            storePassword = secret("SIGNING_STORE_PASSWORD")
             keyAlias = "key0"
-            keyPassword = "CarLauncher"
+            keyPassword = secret("SIGNING_KEY_PASSWORD")
         }
     }
 
@@ -57,7 +76,7 @@ dependencies {
     implementation("androidx.palette:palette:1.0.0")
     implementation("com.elvishew:xlog:1.11.1")
     implementation("com.google.zxing:core:3.5.2")
-    implementation("org.postgresql:postgresql:42.7.2")
+    implementation("org.postgresql:postgresql:42.7.13")
     // Outils pour la position GPS
     implementation("com.google.android.gms:play-services-location:21.1.0")
     // Outil pour faire des requêtes internet

@@ -24,6 +24,6 @@ public class TripDailyRepository extends AbstractRepository {
                 "duration = EXCLUDED.duration;";
 
         java.sql.Date sqlDate = new java.sql.Date(trip.date.getTime());
-        worker.addQueue(query, sqlDate, trip.distancekm, trip.timeMinutes);
+        worker.addQueue(query, sqlDate, trip.distanceKm, trip.timeMinutes);
     }
 }

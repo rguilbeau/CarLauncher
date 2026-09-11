@@ -20,10 +20,14 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.repository.TripDailyRepository;
+import com.rguilbeau.carlauncher.repository.dto.DailyTrip;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.TripService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
+
+import java.util.Date;
 
 /**
  * Activité principale du Car Launcher.

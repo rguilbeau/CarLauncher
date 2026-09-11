@@ -31,6 +31,12 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Compilation et Signature de l'APK Release
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           VERSION_NAME="${GITHUB_REF_NAME#v}"
           VERSION_CODE=$(git rev-list --count HEAD)
