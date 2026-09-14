@@ -13,7 +13,6 @@ import com.rguilbeau.carlauncher.repository.TripDailyRepository;
 import com.rguilbeau.carlauncher.repository.dto.DailyTrip;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
-import com.rguilbeau.carlauncher.service.trip.TripListener;
 import com.rguilbeau.carlauncher.service.trip.TripService;
 import com.rguilbeau.carlauncher.service.trip.TripStats;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
@@ -27,17 +26,25 @@ import java.util.concurrent.TimeUnit;
 /**
  * Service d'arrière-plan chargé de persister les statistiques de trajet en base de données.
  * <p>
- * S'abonne au {@link TripService} et enregistre les statistiques "full" (jamais affectées par un
- * reset manuel de l'utilisateur) à chaque retour à l'arrêt du véhicule, puis toutes les minutes
- * tant que celui-ci reste immobile, via {@link TripDailyRepository}.
+ * Interroge {@link TripService} de manière synchrone (via {@link TripService#getFullStats()}) et
+ * enregistre les statistiques "full" (jamais affectées par un reset manuel de l'utilisateur) via
+ * {@link TripDailyRepository}, selon trois déclencheurs cumulés : une sauvegarde immédiate à
+ * chaque retour à l'arrêt du véhicule, un flush immédiat à la coupure du contact, et une
+ * sauvegarde périodique inconditionnelle toutes les minutes, qu'importe l'état du véhicule
+ * (roulant ou à l'arrêt) — filet de sécurité couvrant les longs trajets sans arrêt. L'accès
+ * synchrone évite toute dépendance à l'ordre d'abonnement entre services : la valeur lue est
+ * toujours celle en vigueur au moment exact de la sauvegarde.
  * </p>
  */
-public class TripPersistenceService extends Service implements TripListener, CarTelemetryListener {
+public class TripPersistenceService extends Service implements CarTelemetryListener {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "TripPersistenceService";
 
     /**
-     * Intervalle entre deux sauvegardes périodiques tant que le véhicule est à l'arrêt.
+     * Intervalle entre deux sauvegardes périodiques inconditionnelles (roulant ou à l'arrêt).
      */
     private static final long SAVE_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
@@ -68,20 +75,19 @@ public class TripPersistenceService extends Service implements TripListener, Car
     private int lastSpeedKmH = -1;
 
     /**
-     * Dernières statistiques "full" reçues, utilisées lors d'une sauvegarde (périodique ou déclenchée
-     * par une coupure du contact).
-     */
-    private volatile TripStats lastFullStats = null;
-
-    /**
-     * Planificateur des sauvegardes périodiques tant que le véhicule reste à l'arrêt.
+     * Planificateur de la sauvegarde périodique inconditionnelle.
      */
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    /**
+     * Tâche répétée sauvegardant les statistiques "full" toutes les {@link #SAVE_INTERVAL_MS}, en
+     * continu et indépendamment de l'état du véhicule (roulant ou à l'arrêt). Démarrée une seule
+     * fois dans {@link #onCreate()} et arrêtée uniquement à la destruction du service.
+     */
     private final Runnable periodicSave = new Runnable() {
         @Override
         public void run() {
-            persist(lastFullStats);
+            persistCurrentStats();
             handler.postDelayed(this, SAVE_INTERVAL_MS);
         }
     };
@@ -90,14 +96,19 @@ public class TripPersistenceService extends Service implements TripListener, Car
      * Gère le cycle de vie de la connexion avec le service de trajet.
      */
     private final ServiceConnection tripServiceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de trajet et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             TripService.LocalBinder binder = (TripService.LocalBinder) service;
             tripService = binder.getService();
-            tripService.addListener(TripPersistenceService.this);
             CarLog.d(TAG, "TripPersistenceService connected to TripService.");
         }
 
+        /**
+         * Oublie la référence au service de trajet devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             tripService = null;
@@ -108,6 +119,9 @@ public class TripPersistenceService extends Service implements TripListener, Car
      * Gère le cycle de vie de la connexion avec le service de trajet.
      */
     private final ServiceConnection telemetryServiceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de télémétrie et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
@@ -116,12 +130,19 @@ public class TripPersistenceService extends Service implements TripListener, Car
             CarLog.d(TAG, "TripPersistenceService connected to CarTelemetryService.");
         }
 
+        /**
+         * Oublie la référence au service de télémétrie devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             telemetryService = null;
         }
     };
 
+    /**
+     * Initialise le service : liaison au service de trajet et au service de télémétrie, puis
+     * démarrage de la boucle de sauvegarde périodique inconditionnelle.
+     */
     @Override
     public void onCreate() {
         super.onCreate();
@@ -130,36 +151,51 @@ public class TripPersistenceService extends Service implements TripListener, Car
 
         Intent intentTelemetryService = new Intent(this, CarTelemetryService.class);
         isTelemetryServiceBound = bindService(intentTelemetryService, telemetryServiceConnection, Context.BIND_AUTO_CREATE);
+
+        handler.postDelayed(periodicSave, SAVE_INTERVAL_MS);
     }
 
-    @Override
-    public void onTripUpdated(TripStats daily, TripStats full) {
-        lastFullStats = full;
-    }
-
+    /**
+     * Déclenche une sauvegarde immédiate dès que le véhicule s'arrête (front descendant vers 0 km/h).
+     * La sauvegarde périodique inconditionnelle ({@link #periodicSave}) continue par ailleurs de
+     * tourner indépendamment de cet événement.
+     *
+     * @param speed La vitesse actuelle du véhicule en km/h.
+     * @param rpm   Le régime moteur actuel, non utilisé ici.
+     */
     @Override
     public void onTelemetryUpdated(int speed, int rpm) {
-        if (speed == 0) {
-            if (lastSpeedKmH != 0) {
-                // Front descendant : le véhicule vient de s'arrêter
-                persist(lastFullStats);
-                handler.removeCallbacks(periodicSave);
-                handler.postDelayed(periodicSave, SAVE_INTERVAL_MS);
-            }
-        } else {
-            handler.removeCallbacks(periodicSave);
+        if (speed == 0 && lastSpeedKmH != 0) {
+            // Front descendant : le véhicule vient de s'arrêter
+            persistCurrentStats();
         }
 
         lastSpeedKmH = speed;
     }
 
+    /**
+     * Effectue un flush immédiat des statistiques à la coupure du contact, afin de ne perdre aucune
+     * donnée avant une éventuelle remise à zéro du jour suivant.
+     *
+     * @param accOn true si le contact est mis, false s'il est coupé.
+     */
     @Override
     public void onAccStateChanged(boolean accOn) {
         if (!accOn) {
-            // Flush final pour ne perdre aucune donnée avant une éventuelle remise à zéro du jour suivant
-            handler.removeCallbacks(periodicSave);
-            persist(lastFullStats);
+            persistCurrentStats();
         }
+    }
+
+    /**
+     * Lit les statistiques "full" courantes directement sur {@link TripService} (accès synchrone,
+     * indépendant de tout ordre d'abonnement) et déclenche leur persistance.
+     */
+    private void persistCurrentStats() {
+        if (tripService == null) {
+            CarLog.w(TAG, "TripService non connecté, sauvegarde ignorée.");
+            return;
+        }
+        persist(tripService.getFullStats());
     }
 
     /**
@@ -184,11 +220,20 @@ public class TripPersistenceService extends Service implements TripListener, Car
         }
     }
 
+    /**
+     * Demande à Android de redémarrer le service (sans réintention) s'il venait à être tué.
+     *
+     * @return {@link #START_STICKY}.
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         return START_STICKY;
     }
 
+    /**
+     * Libère les ressources à l'arrêt du service : sauvegarde périodique annulée et désabonnement
+     * des deux services liés.
+     */
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -196,9 +241,6 @@ public class TripPersistenceService extends Service implements TripListener, Car
 
         try {
             if (isTripServiceBound) {
-                if (tripService != null) {
-                    tripService.removeListener(this);
-                }
                 unbindService(tripServiceConnection);
                 isTripServiceBound = false;
             }
@@ -215,6 +257,9 @@ public class TripPersistenceService extends Service implements TripListener, Car
         }
     }
 
+    /**
+     * Aucun composant ne se lie à ce service : il n'expose pas de binder.
+     */
     @Override
     public IBinder onBind(Intent intent) {
         return null;

@@ -83,6 +83,13 @@ public class LogViewAdapter extends RecyclerView.Adapter<LogViewAdapter.LogViewH
         notifyDataSetChanged();
     }
 
+    /**
+     * Crée un nouveau ViewHolder en gonflant le layout d'une ligne de journal.
+     *
+     * @param parent   Le ViewGroup dans lequel la nouvelle vue sera ajoutée.
+     * @param viewType Le type de vue de la nouvelle vue.
+     * @return Un nouveau {@link LogViewHolder}.
+     */
     @NonNull
     @Override
     public LogViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -91,6 +98,12 @@ public class LogViewAdapter extends RecyclerView.Adapter<LogViewAdapter.LogViewH
         return new LogViewHolder(view);
     }
 
+    /**
+     * Associe une ligne de journal au ViewHolder et colore le texte selon son niveau (erreur, warning, info).
+     *
+     * @param holder   Le ViewHolder à mettre à jour.
+     * @param position La position de l'élément dans la liste filtrée.
+     */
     @Override
     public void onBindViewHolder(@NonNull LogViewHolder holder, int position) {
         String line = displayedLogLines.get(position);
@@ -107,14 +120,28 @@ public class LogViewAdapter extends RecyclerView.Adapter<LogViewAdapter.LogViewH
         }
     }
 
+    /**
+     * Retourne le nombre de lignes actuellement affichées après filtrage.
+     *
+     * @return Le nombre de lignes affichées.
+     */
     @Override
     public int getItemCount() {
         return displayedLogLines.size();
     }
 
     static class LogViewHolder extends RecyclerView.ViewHolder {
+
+        /**
+         * Composant visuel affichant une ligne de journal d'événements.
+         */
         final TextView textLine;
 
+        /**
+         * Relie la référence de vue au composant texte de la ligne de journal.
+         *
+         * @param itemView La vue racine de l'élément.
+         */
         LogViewHolder(@NonNull View itemView) {
             super(itemView);
             textLine = itemView.findViewById(R.id.text_log_line);

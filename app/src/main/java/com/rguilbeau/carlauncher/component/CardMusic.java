@@ -166,11 +166,17 @@ public class CardMusic extends FrameLayout implements View.OnClickListener, View
      * Callback attaché au contrôleur média courant pour recevoir les changements de métadonnées et d'état de lecture.
      */
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
+        /**
+         * Répercute les nouvelles métadonnées (titre, artiste, pochette) sur l'affichage.
+         */
         @Override
         public void onMetadataChanged(@Nullable MediaMetadata metadata) {
             updateMediaUI(metadata);
         }
 
+        /**
+         * Répercute le nouvel état de lecture (play/pause) sur l'icône du bouton central.
+         */
         @Override
         public void onPlaybackStateChanged(@Nullable PlaybackState state) {
             updatePlaybackStateUI(state);

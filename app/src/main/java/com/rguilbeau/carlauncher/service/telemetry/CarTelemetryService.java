@@ -106,6 +106,9 @@ public class CarTelemetryService extends Service {
      * aux méthodes spécialisées.
      */
     private final BroadcastReceiver carReceiver = new BroadcastReceiver() {
+        /**
+         * Aiguille chaque broadcast reçu vers le traitement dédié selon son action.
+         */
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();

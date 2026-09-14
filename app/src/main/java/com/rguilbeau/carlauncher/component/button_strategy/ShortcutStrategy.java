@@ -125,6 +125,9 @@ public class ShortcutStrategy implements ButtonStrategy {
             }
 
             ArrayAdapter<AppInfo> adapter = new ArrayAdapter<AppInfo>(context, R.layout.app_list_selection, appList) {
+                /**
+                 * Gonfle (ou réutilise) la vue d'une ligne et y affiche l'icône et le nom de l'application.
+                 */
                 @NonNull
                 @Override
                 public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
