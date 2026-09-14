@@ -208,12 +208,18 @@ public class AutoPlayManager {
         long initialDelay = delayed ? PRE_LAUNCH_DELAY_MS : 0L;
 
         handler.postDelayed(new Runnable() {
+            /**
+             * Lance l'application musicale cible, puis planifie le retour au Launcher.
+             */
             @Override
             public void run() {
                 if (!isRunning.get()) return;
                 launchTargetApp(savedPackage);
 
                 handler.postDelayed(new Runnable() {
+                    /**
+                     * Ramène le Car Launcher au premier plan et commence à surveiller l'apparition du lecteur.
+                     */
                     @Override
                     public void run() {
                         if (!isRunning.get()) return;
@@ -302,6 +308,9 @@ public class AutoPlayManager {
      */
     private void attachEventListeners(final String packageName) {
         timeoutRunnable = new Runnable() {
+            /**
+             * Force l'arrêt de la séquence d'Autoplay lorsque le délai limite est écoulé.
+             */
             @Override
             public void run() {
                 CarLog.w(TAG, "Timeout reached! Forcing shutdown.");
@@ -315,6 +324,9 @@ public class AutoPlayManager {
         }
 
         sessionListener = new MediaSessionManager.OnActiveSessionsChangedListener() {
+            /**
+             * Revérifie si l'application cible est prête à chaque changement de sessions actives.
+             */
             @Override
             public void onActiveSessionsChanged(List<MediaController> controllers) {
                 if (!isRunning.get()) return;
@@ -366,6 +378,9 @@ public class AutoPlayManager {
      */
     private void registerControllerCallback(MediaController controller, final String packageName) {
         controllerCallback = new MediaController.Callback() {
+            /**
+             * Planifie la lecture dès que des métadonnées valides apparaissent sur le contrôleur surveillé.
+             */
             @Override
             public void onMetadataChanged(MediaMetadata metadata) {
                 if (!isRunning.get()) return;
@@ -375,6 +390,9 @@ public class AutoPlayManager {
                 }
             }
 
+            /**
+             * Confirme la fin de la séquence d'Autoplay dès que la lecture démarre réellement.
+             */
             @Override
             public void onPlaybackStateChanged(PlaybackState state) {
                 if (!isRunning.get()) return;
@@ -414,6 +432,9 @@ public class AutoPlayManager {
         }
 
         pendingPlayRunnable = new Runnable() {
+            /**
+             * Envoie la commande de lecture au contrôleur média ciblé.
+             */
             @Override
             public void run() {
                 try {

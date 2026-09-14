@@ -68,6 +68,9 @@ public class CardTrip extends FrameLayout implements TripListener {
      * Gère le cycle de vie de la connexion avec le service de trajet.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de trajet et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             TripService.LocalBinder binder = (TripService.LocalBinder) service;
@@ -75,6 +78,9 @@ public class CardTrip extends FrameLayout implements TripListener {
             tripService.addListener(CardTrip.this);
         }
 
+        /**
+         * Oublie la référence au service de trajet devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             tripService = null;

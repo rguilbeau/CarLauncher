@@ -9,9 +9,23 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 public class NeonClient implements IClient {
+
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "NeonClientDB";
+
+    /**
+     * Connexion JDBC globale et partagée vers la base de données, réouverte si fermée ou invalide.
+     */
     private static Connection connection;
 
+    /**
+     * Récupère la connexion JDBC globale, en l'ouvrant ou en la réouvrant si elle est absente, fermée ou invalide.
+     *
+     * @return La connexion active vers la base de données.
+     * @throws SQLException Si l'ouverture de la connexion échoue.
+     */
     private static synchronized Connection getConnection() throws SQLException {
         if (connection == null || connection.isClosed() || !connection.isValid(2)) {
             CarLog.i(TAG, "Ouverture d'une nouvelle connexion globale à la base de données...");
@@ -20,6 +34,13 @@ public class NeonClient implements IClient {
         return connection;
     }
 
+    /**
+     * Exécute une requête SQL paramétrée sur la connexion active, et ferme/réinitialise la connexion en cas d'échec.
+     *
+     * @param query La requête SQL paramétrée à exécuter.
+     * @param args  Les valeurs à substituer aux paramètres, dans l'ordre.
+     * @return true si la requête s'est exécutée avec succès, false sinon.
+     */
     @Override
     public boolean exec(String query, Object... args) {
         try (PreparedStatement stmt = getConnection().prepareStatement(query)) {

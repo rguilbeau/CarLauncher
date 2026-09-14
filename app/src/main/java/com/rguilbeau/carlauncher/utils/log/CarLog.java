@@ -63,6 +63,9 @@ public class CarLog {
         File folder = getLogFolder(context);
         Printer filePrinter = new FilePrinter.Builder(folder.getAbsolutePath())
                 .fileNameGenerator(new DateFileNameGenerator() {
+                    /**
+                     * Ajoute l'extension ".log" au nom de fichier généré par défaut (date du jour).
+                     */
                     @Override
                     public String generateFileName(int logLevel, long timestamp) {
                         return super.generateFileName(logLevel, timestamp) + ".log";
@@ -71,8 +74,14 @@ public class CarLog {
                 .cleanStrategy(new FileLastModifiedCleanStrategy(5L * 24L * 60L * 60L * 1000L))
                 // Définition du formatage sur mesure
                 .flattener(new Flattener2() {
+                    /**
+                     * Formateur de date utilisé pour l'horodatage de chaque ligne de log.
+                     */
                     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
 
+                    /**
+                     * Formate une ligne de log sous la forme "date - [niveau] tag : message".
+                     */
                     @Override
                     public CharSequence flatten(long timeMillis, int logLevel, String tag, String message) {
                         // Exemple de résultat : 2026-08-28 08:37:25 - [E] Tag : message

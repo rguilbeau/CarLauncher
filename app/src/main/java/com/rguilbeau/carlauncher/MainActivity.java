@@ -58,6 +58,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
      * Simule un appui sur le bouton Home pour forcer l'affichage du Launcher.
      */
     private final BroadcastReceiver screenWakeUpReceiver = new BroadcastReceiver() {
+        /**
+         * Renvoie l'utilisateur vers l'écran d'accueil dès que l'écran se rallume.
+         */
         @Override
         public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
@@ -74,6 +77,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
      * S'abonne aux événements de télémétrie une fois le service connecté.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de télémétrie et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
@@ -83,6 +89,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
             telemetryServiceBound = true;
         }
 
+        /**
+         * Oublie la référence au service de télémétrie devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             telemetryServiceBound = false;
@@ -203,6 +212,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         PermissionManager.handlePermissionResult(requestCode, grantResults, new PermissionManager.PermissionCallback() {
+            /**
+             * Démarre les services de trajet et recrée l'activité maintenant que la permission GPS est accordée.
+             */
             @Override
             public void onGranted() {
                 startTripService();
@@ -210,6 +222,9 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
                 recreate();
             }
 
+            /**
+             * Informe l'utilisateur que la permission GPS est nécessaire au bon fonctionnement de l'application.
+             */
             @Override
             public void onDenied() {
                 Toast.makeText(MainActivity.this, "Permission GPS requise pour le fonctionnement optimal", Toast.LENGTH_LONG).show();

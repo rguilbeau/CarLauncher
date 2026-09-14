@@ -21,6 +21,13 @@ public class TripStats {
      */
     public final String dayKey;
 
+    /**
+     * Construit un nouvel instantané de statistiques de trajet.
+     *
+     * @param distanceMeters  La distance parcourue, en mètres.
+     * @param driveTimeMillis Le temps de conduite accumulé, en millisecondes.
+     * @param dayKey          Le jour auquel ces statistiques sont rattachées ("yyyy-MM-dd").
+     */
     public TripStats(float distanceMeters, long driveTimeMillis, String dayKey) {
         this.distanceMeters = distanceMeters;
         this.driveTimeMillis = driveTimeMillis;

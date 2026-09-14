@@ -21,14 +21,32 @@ import com.rguilbeau.carlauncher.utils.log.CarLog;
  */
 public class QueryWorker extends Worker {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "QueryWorker";
 
+    /**
+     * Client de base de données utilisé pour exécuter la requête SQL en attente.
+     */
     private final IClient client = new NeonClient();
 
+    /**
+     * Constructeur requis par WorkManager pour instancier ce worker.
+     *
+     * @param context Le contexte Android fourni par WorkManager.
+     * @param params  Les paramètres du travail, incluant les données d'entrée.
+     */
     public QueryWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
     }
 
+    /**
+     * Décode la requête et ses arguments depuis les données d'entrée, puis l'exécute via {@link #client}.
+     *
+     * @return {@link Result#success()} en cas de succès, {@link Result#retry()} en cas d'échec réseau/SQL,
+     * ou {@link Result#failure()} si les données d'entrée sont invalides.
+     */
     @NonNull
     @Override
     public Result doWork() {

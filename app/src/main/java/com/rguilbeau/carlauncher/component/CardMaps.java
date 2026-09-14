@@ -64,6 +64,9 @@ public class CardMaps extends FrameLayout implements View.OnClickListener {
      */
     private final BroadcastReceiver mapsReceiver = new BroadcastReceiver() {
 
+        /**
+         * Met à jour ou réinitialise l'affichage de navigation selon les données reçues du NotificationService.
+         */
         @Override
         public void onReceive(Context context, Intent intent) {
             if (NotificationService.ACTION_MAPS_UPDATE.equals(intent.getAction())) {

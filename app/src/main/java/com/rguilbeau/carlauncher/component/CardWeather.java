@@ -295,6 +295,10 @@ public class CardWeather extends FrameLayout implements Runnable {
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 300000).build();
 
         locationCallback = new LocationCallback() {
+            /**
+             * Met à jour et sauvegarde la position reçue, et force un rafraîchissement immédiat
+             * si aucune position n'était connue jusqu'ici.
+             */
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
                 boolean wasNull = (lastKnownLocation == null);
@@ -384,6 +388,9 @@ public class CardWeather extends FrameLayout implements Runnable {
                 .build();
 
         networkCallback = new ConnectivityManager.NetworkCallback() {
+            /**
+             * Se désabonne du callback réseau et relance la mise à jour météo dès que la connexion revient.
+             */
             @Override
             public void onAvailable(@NonNull Network network) {
                 super.onAvailable(network);
@@ -437,12 +444,18 @@ public class CardWeather extends FrameLayout implements Runnable {
         Request request = new Request.Builder().url(url).build();
 
         httpClient.newCall(request).enqueue(new Callback() {
+            /**
+             * Journalise l'échec réseau et replanifie une nouvelle tentative.
+             */
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
                 CarLog.e(TAG, "Failed to execute Open-Meteo API request", e);
                 scheduleNextUpdate();
             }
 
+            /**
+             * Parse la réponse JSON de l'API et met à jour l'affichage météo, ou replanifie en cas d'échec.
+             */
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) {
                 if (response.isSuccessful() && response.body() != null) {

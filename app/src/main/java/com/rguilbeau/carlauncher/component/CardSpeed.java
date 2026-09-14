@@ -62,6 +62,9 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
      * Gestionnaire de connexion entre la vue et le service de télémétrie.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de télémétrie et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
@@ -71,6 +74,9 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
             CarLog.d(TAG, "Connected to CarTelemetryService");
         }
 
+        /**
+         * Oublie la référence au service de télémétrie devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             isBound = false;

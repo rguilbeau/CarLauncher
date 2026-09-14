@@ -31,6 +31,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class WorkerManager {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "WorkerManager";
 
     /**
@@ -38,10 +41,19 @@ public class WorkerManager {
      */
     private static final String QUEUE_NAME = "db_query_queue";
 
+    /**
+     * Instance unique du gestionnaire (patron de conception Singleton).
+     */
     private static WorkerManager instance;
 
+    /**
+     * Contexte applicatif utilisé pour accéder à {@link WorkManager}, initialisé via {@link #init(Context)}.
+     */
     private Context appContext;
 
+    /**
+     * Constructeur privé imposant le passage par {@link #get()} (patron de conception Singleton).
+     */
     private WorkerManager() {
     }
 

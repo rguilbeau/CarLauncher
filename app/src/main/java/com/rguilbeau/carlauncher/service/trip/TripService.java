@@ -241,6 +241,9 @@ public class TripService extends Service implements LocationListener, CarTelemet
      * Gère le cycle de vie de la connexion avec le service de télémétrie.
      */
     private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de télémétrie et s'y abonne.
+         */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
@@ -249,12 +252,19 @@ public class TripService extends Service implements LocationListener, CarTelemet
             CarLog.d(TAG, "TripService connected to CANbus.");
         }
 
+        /**
+         * Oublie la référence au service de télémétrie devenue invalide.
+         */
         @Override
         public void onServiceDisconnected(ComponentName name) {
             telemetryService = null;
         }
     };
 
+    /**
+     * Initialise le service : ouvre les préférences persistantes, se lie au service de télémétrie
+     * et démarre les mises à jour GPS si la permission de localisation est accordée.
+     */
     @SuppressLint("MissingPermission")
     @Override
     public void onCreate() {
@@ -318,11 +328,16 @@ public class TripService extends Service implements LocationListener, CarTelemet
         notifyTripUpdated();
     }
 
+    /**
+     * Met en cache la vitesse courante, utilisée uniquement en interne pour filtrer les mises à jour
+     * GPS (voir {@link #onLocationChanged}) : ce n'est pas une information de trajet, elle n'est
+     * donc pas relayée aux {@link TripListener}.
+     *
+     * @param speed La vitesse actuelle du véhicule en km/h.
+     * @param rpm   Le régime moteur actuel, non utilisé par ce service.
+     */
     @Override
     public void onTelemetryUpdated(int speed, int rpm) {
-        // Vitesse utilisée uniquement en interne pour filtrer les mises à jour GPS
-        // (voir onLocationChanged) : ce n'est pas une information de trajet, elle n'est
-        // donc pas relayée aux TripListener.
         this.currentSpeedKmH = speed;
     }
 
@@ -408,11 +423,20 @@ public class TripService extends Service implements LocationListener, CarTelemet
         }
     }
 
+    /**
+     * Demande à Android de redémarrer le service (sans réintention) s'il venait à être tué.
+     *
+     * @return {@link #START_STICKY}.
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         return START_STICKY;
     }
 
+    /**
+     * Libère les ressources à l'arrêt du service : désabonnement du service de télémétrie
+     * et arrêt des mises à jour GPS.
+     */
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -433,19 +457,34 @@ public class TripService extends Service implements LocationListener, CarTelemet
         }
     }
 
+    /**
+     * Fournit le binder permettant aux composants clients de se lier à ce service.
+     *
+     * @param intent L'intention utilisée pour se lier.
+     * @return Le {@link LocalBinder} de ce service.
+     */
     @Override
     public IBinder onBind(Intent intent) {
         return binder;
     }
 
+    /**
+     * Non utilisé : le statut du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
+     */
     @Override
     public void onStatusChanged(String provider, int status, Bundle extras) {
     }
 
+    /**
+     * Non utilisé : l'activation du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
+     */
     @Override
     public void onProviderEnabled(@NonNull String provider) {
     }
 
+    /**
+     * Non utilisé : la désactivation du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
+     */
     @Override
     public void onProviderDisabled(@NonNull String provider) {
     }
