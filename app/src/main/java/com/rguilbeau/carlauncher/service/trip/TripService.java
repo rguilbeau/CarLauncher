@@ -1,4 +1,4 @@
-package com.rguilbeau.carlauncher.service;
+package com.rguilbeau.carlauncher.service.trip;
 
 import android.annotation.SuppressLint;
 import android.app.Service;
@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.SystemClock;
@@ -22,7 +23,9 @@ import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -64,6 +67,16 @@ public class TripService extends Service implements LocationListener, CarTelemet
      * Clé des préférences pour stocker l'horodatage précis de la dernière coupure de contact.
      */
     public static final String KEY_LAST_ACC_OFF = "lastAccOffTime";
+
+    /**
+     * Clé des préférences pour stocker la distance de référence au moment du dernier reset manuel.
+     */
+    private static final String KEY_DAILY_RESET_DISTANCE = "dailyResetDistance";
+
+    /**
+     * Clé des préférences pour stocker le temps de conduite de référence au moment du dernier reset manuel.
+     */
+    private static final String KEY_DAILY_RESET_TIME = "dailyResetTime";
 
     /**
      * Vitesse minimale (en km/h) issue du bus CAN nécessaire pour considérer que le véhicule se déplace.
@@ -119,6 +132,110 @@ public class TripService extends Service implements LocationListener, CarTelemet
      * Indicateur d'état précisant si le TripService est actuellement attaché au service de télémétrie.
      */
     private boolean isBound = false;
+
+    /**
+     * Liste des écouteurs abonnés aux statistiques de trajet.
+     */
+    private final List<TripListener> listeners = new ArrayList<>();
+
+    /**
+     * Interface de communication permettant aux composants liés d'interagir avec ce service.
+     */
+    private final IBinder binder = new LocalBinder();
+
+    /**
+     * Classe interne fournissant l'instance du service aux composants clients lors du binding.
+     */
+    public class LocalBinder extends Binder {
+        /**
+         * Retourne l'instance courante du TripService.
+         *
+         * @return Le service de trajet actif.
+         */
+        public TripService getService() {
+            return TripService.this;
+        }
+    }
+
+    /**
+     * Ajoute un nouvel abonné à la liste de diffusion des statistiques de trajet.
+     * Transmet immédiatement à ce nouvel abonné l'état actuel du contact et des statistiques.
+     *
+     * @param listener L'écouteur à ajouter.
+     */
+    public synchronized void addListener(TripListener listener) {
+        if (!listeners.contains(listener)) {
+            listeners.add(listener);
+            listener.onTripUpdated(buildDailyStats(), buildFullStats());
+        }
+    }
+
+    /**
+     * Retire un abonné de la liste de diffusion.
+     *
+     * @param listener L'écouteur à retirer.
+     */
+    public synchronized void removeListener(TripListener listener) {
+        listeners.remove(listener);
+    }
+
+    /**
+     * Notifie tous les abonnés d'une mise à jour des statistiques de trajet.
+     */
+    private synchronized void notifyTripUpdated() {
+        TripStats daily = buildDailyStats();
+        TripStats full = buildFullStats();
+
+        for (TripListener listener : listeners) {
+            listener.onTripUpdated(daily, full);
+        }
+    }
+
+    /**
+     * Construit l'instantané des statistiques "daily" (remises à zéro par {@link #resetDaily()}).
+     *
+     * @return Les statistiques affichables, offset du reset manuel déduit du total réel.
+     */
+    private TripStats buildDailyStats() {
+        float distance = prefs.getFloat(KEY_DISTANCE, 0f) - prefs.getFloat(KEY_DAILY_RESET_DISTANCE, 0f);
+        long driveTime = prefs.getLong(KEY_DRIVE_TIME, 0L) - prefs.getLong(KEY_DAILY_RESET_TIME, 0L);
+        return new TripStats(Math.max(distance, 0f), Math.max(driveTime, 0L), currentDayKey());
+    }
+
+    /**
+     * Construit l'instantané des statistiques "full" (total réel de la journée, non affecté par
+     * le reset manuel de l'utilisateur — destiné à la persistance en base).
+     *
+     * @return Les statistiques complètes du jour.
+     */
+    private TripStats buildFullStats() {
+        float distance = prefs.getFloat(KEY_DISTANCE, 0f);
+        long driveTime = prefs.getLong(KEY_DRIVE_TIME, 0L);
+        return new TripStats(distance, driveTime, currentDayKey());
+    }
+
+    /**
+     * Réinitialise à zéro les statistiques "daily" affichées à l'utilisateur, sans affecter les
+     * statistiques "full" (total réel de la journée), qui restent destinées à la persistance en base.
+     */
+    public void resetDaily() {
+        prefs.edit()
+                .putFloat(KEY_DAILY_RESET_DISTANCE, prefs.getFloat(KEY_DISTANCE, 0f))
+                .putLong(KEY_DAILY_RESET_TIME, prefs.getLong(KEY_DRIVE_TIME, 0L))
+                .apply();
+
+        notifyTripUpdated();
+    }
+
+    /**
+     * Récupère la clé du jour ("yyyy-MM-dd") auquel les statistiques courantes sont rattachées.
+     *
+     * @return La clé du jour courant.
+     */
+    private String currentDayKey() {
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+        return prefs.getString(KEY_SAVED_DATE, today);
+    }
 
     /**
      * Gère le cycle de vie de la connexion avec le service de télémétrie.
@@ -197,10 +314,15 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
             CarLog.i(TAG, "Ignition off (ACC_OFF) trip end");
         }
+
+        notifyTripUpdated();
     }
 
     @Override
     public void onTelemetryUpdated(int speed, int rpm) {
+        // Vitesse utilisée uniquement en interne pour filtrer les mises à jour GPS
+        // (voir onLocationChanged) : ce n'est pas une information de trajet, elle n'est
+        // donc pas relayée aux TripListener.
         this.currentSpeedKmH = speed;
     }
 
@@ -233,8 +355,12 @@ public class TripService extends Service implements LocationListener, CarTelemet
                 prefs.edit()
                         .putFloat(KEY_DISTANCE, 0f)
                         .putLong(KEY_DRIVE_TIME, 0L)
+                        .putFloat(KEY_DAILY_RESET_DISTANCE, 0f)
+                        .putLong(KEY_DAILY_RESET_TIME, 0L)
                         .putString(KEY_SAVED_DATE, today)
                         .apply();
+
+                notifyTripUpdated();
 
                 CarLog.i(TAG, "Smart Reset executed: daily data reset.");
             }
@@ -275,6 +401,8 @@ public class TripService extends Service implements LocationListener, CarTelemet
             } else {
                 lastLocation = location;
             }
+
+            notifyTripUpdated();
         } catch (Exception e) {
             CarLog.e(TAG, "Error calculating trip", e);
         }
@@ -307,7 +435,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
     }
 
     @Override

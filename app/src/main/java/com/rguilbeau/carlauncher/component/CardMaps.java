@@ -20,7 +20,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
-import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.service.notification.NotificationService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**

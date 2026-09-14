@@ -20,14 +20,11 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
-import com.rguilbeau.carlauncher.repository.TripDailyRepository;
-import com.rguilbeau.carlauncher.repository.dto.DailyTrip;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
-import com.rguilbeau.carlauncher.service.TripService;
+import com.rguilbeau.carlauncher.service.trip.TripService;
+import com.rguilbeau.carlauncher.service.trip.persistence.TripPersistenceService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
-
-import java.util.Date;
 
 /**
  * Activité principale du Car Launcher.
@@ -115,6 +112,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
 
         if (PermissionManager.hasLocationPermission(this)) {
             startTripService();
+            startTripPersistenceService();
         } else {
             PermissionManager.requestLocationPermission(this);
         }
@@ -155,17 +153,6 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     }
 
     /**
-     * Déclenchée lorsque les données de télémétrie (vitesse, régime moteur) sont mises à jour.
-     *
-     * @param speed La vitesse actuelle en km/h.
-     * @param rpm   Le régime moteur actuel en tr/min.
-     */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        // MainActivity n'a pas besoin de la vitesse ou des RPM, laissé vide intentionnellement
-    }
-
-    /**
      * Appelée lorsque l'activité revient au premier plan.
      * Réapplique le mode immersif et vérifie les permissions de notifications.
      */
@@ -193,6 +180,18 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     }
 
     /**
+     * Démarre le service de persistance des statistiques de trajet en base (TripPersistenceService).
+     */
+    private void startTripPersistenceService() {
+        try {
+            Intent intent = new Intent(this, TripPersistenceService.class);
+            startService(intent);
+        } catch (Exception e) {
+            CarLog.e(TAG, "Failed to start TripPersistenceService", e);
+        }
+    }
+
+    /**
      * Gère la réponse de l'utilisateur aux demandes de permissions système.
      *
      * @param requestCode  Le code de requête passé lors de la demande.
@@ -207,6 +206,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
             @Override
             public void onGranted() {
                 startTripService();
+                startTripPersistenceService();
                 recreate();
             }
 

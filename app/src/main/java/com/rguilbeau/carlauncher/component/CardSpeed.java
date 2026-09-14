@@ -139,15 +139,6 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     }
 
     /**
-     * Déclenchée lors d'un changement d'état du contact du véhicule.
-     *
-     * @param isAccOn true si le contact est mis, false sinon.
-     */
-    @Override
-    public void onAccStateChanged(boolean isAccOn) {
-    }
-
-    /**
      * Reçoit les nouvelles valeurs de télémétrie et met à jour l'affichage sur le thread principal.
      *
      * @param speed La vitesse instantanée du véhicule en km/h.

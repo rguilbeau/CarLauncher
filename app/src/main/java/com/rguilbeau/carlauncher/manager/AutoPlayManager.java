@@ -12,7 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 
-import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.service.notification.NotificationService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;

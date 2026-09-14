@@ -1,4 +1,4 @@
-package com.rguilbeau.carlauncher.service;
+package com.rguilbeau.carlauncher.service.notification;
 
 import android.app.Notification;
 import android.content.Intent;

@@ -64,7 +64,7 @@
 
         <!-- Service d'écoute des notifications système : intercepte les contrôles média (Spotify, etc.) et les données Google Maps -->
         <service
-            android:name=".service.NotificationService"
+            android:name=".service.notification.NotificationService"
             android:exported="true"
             android:label="Car Launcher Media"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -75,7 +75,13 @@
 
         <!-- Service d'arrière-plan enregistrant les statistiques de trajet (distance, durée) -->
         <service
-            android:name=".service.TripService"
+            android:name=".service.trip.TripService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Service d'arrière-plan persistant les statistiques de trajet en base de données (Neon/Postgres) -->
+        <service
+            android:name=".service.trip.persistence.TripPersistenceService"
             android:enabled="true"
             android:exported="false" />
 

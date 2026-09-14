@@ -12,7 +12,8 @@ public interface CarTelemetryListener {
      *
      * @param accEnabled true si le contact est mis (ACC ON), false s'il est coupé (ACC OFF).
      */
-    void onAccStateChanged(boolean accEnabled);
+    default void onAccStateChanged(boolean accEnabled) {
+    }
 
     /**
      * Appelée lorsque de nouvelles données de conduite sont reçues en temps réel
@@ -21,5 +22,6 @@ public interface CarTelemetryListener {
      * @param speed La vitesse actuelle du véhicule en kilomètres par heure (km/h).
      * @param rpm   Le régime moteur actuel en tours par minute (tr/min).
      */
-    void onTelemetryUpdated(int speed, int rpm);
+    default void onTelemetryUpdated(int speed, int rpm) {
+    }
 }

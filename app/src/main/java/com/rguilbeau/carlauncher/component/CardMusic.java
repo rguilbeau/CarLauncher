@@ -6,14 +6,11 @@ import android.annotation.SuppressLint;
 import android.content.ComponentName;
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.AttributeSet;
 
 import android.view.LayoutInflater;
@@ -34,7 +31,7 @@ import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.component.button_strategy.ButtonStrategy;
 import com.rguilbeau.carlauncher.component.button_strategy.ShortcutStrategy;
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
-import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.service.notification.NotificationService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;
