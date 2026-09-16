@@ -101,6 +101,48 @@ Ces fichiers servent de base de référence pour le *reverse-engineering* du sys
 
 > **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés, indispensables pour intégrer la télémétrie dans le Launcher.
 
+## Base de données
+
+L'application persiste certaines données (statistiques de trajet, dernière position connue) sur une base **PostgreSQL** hébergée chez **[Neon](https://neon.tech)** (serverless, autoscale à zéro).
+
+### Connexion
+
+La connexion se fait en **JDBC direct** (`org.postgresql:postgresql`) plutôt que via l'API REST/HTTP de Neon (Data API) : le projet ne compte que deux tables, la surcharge d'une couche REST ne se justifiait pas (étant donné la complexité de l'authentification).
+
+* `NeonClient` (`repository/client/NeonClient.java`) ouvre et réutilise une connexion JDBC globale (`DriverManager.getConnection(...)`), rouverte automatiquement si elle est fermée, invalide, ou après un échec.
+* Les repositories (`CarLocationRepository`, `TripDailyRepository`, ...) n'exécutent jamais de requête directement : ils empilent leur SQL via `WorkerManager.addQueue(...)`.
+* `WorkerManager` (au-dessus de **WorkManager**) transforme chaque requête en file persistante FIFO (stockée en base Room par WorkManager), contrainte à une connexion réseau disponible (`NetworkType.CONNECTED`), avec retry automatique (backoff linéaire) en cas d'échec. Elle survit donc au kill du process ou à un redémarrage de l'appareil tant qu'une requête n'a pas été exécutée avec succès.
+
+### Fournisseur (Neon) : branches
+
+Le projet Neon possède deux branches, avec les mêmes identifiants (user/password) :
+
+| Branche | Usage |
+|---|---|
+| `production` | Base utilisée en usage réel sur l'autoradio |
+| `dev` | Base utilisée pour le développement local / émulateur |
+
+### `local.properties` et secrets
+
+Les identifiants de connexion (URL JDBC, user, password) ainsi que les mots de passe de signature de l'APK **ne sont jamais commités** : ils sont lus depuis `local.properties` (fichier local, listé dans `.gitignore`) par `app/build.gradle.kts`, puis exposés au code Java via des champs générés (`BuildConfig.DB_URL`, `BuildConfig.DB_USER`, `BuildConfig.DB_PASSWORD`).
+
+En l'absence de `local.properties` (typiquement en CI/GitHub Actions), le script retombe automatiquement sur des **variables d'environnement** de même nom (`secret(key)` cherche d'abord `local.properties`, puis `System.getenv(key)`).
+
+Clés attendues dans `local.properties` :
+
+```properties
+# Connexion base de données (Neon / PostgreSQL)
+DB_URL=jdbc:postgresql://<host-neon>:5432/car_launcher
+DB_USER=<utilisateur>
+DB_PASSWORD=<mot_de_passe>
+
+# Signature de l'APK (voir section Compilation ci-dessous)
+SIGNING_STORE_PASSWORD=<mot_de_passe_store>
+SIGNING_KEY_PASSWORD=<mot_de_passe_cle>
+```
+
+> **Sécurité :** ce fichier contient des secrets réels en local (identifiants Neon notamment) et ne doit **jamais** être ajouté au dépôt Git. Il est déjà exclu via `.gitignore` (`local.properties`) ; en cas de doute, vérifier avec `git status` avant tout commit/push.
+
 ## Compilation (Release)
 
 Pour que le système de mise à jour automatique via GitHub (Self-Update) fonctionne sur l'autoradio, chaque nouvelle version doit obligatoirement être signée avec la même clé cryptographique que la version initiale installée en `priv-app`.
