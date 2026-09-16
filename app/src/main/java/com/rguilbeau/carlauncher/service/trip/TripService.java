@@ -81,7 +81,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
     /**
      * Vitesse minimale (en km/h) issue du bus CAN nécessaire pour considérer que le véhicule se déplace.
      */
-    private static final float MIN_SPEED_KMH = 4.0f;
+    private static final float MIN_SPEED_KMH = 2.0f;
 
     /**
      * Distance minimale (en mètres) requise entre deux relevés GPS successifs pour être ajoutée au total.

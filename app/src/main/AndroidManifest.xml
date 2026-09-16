@@ -91,6 +91,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Service d'arrière-plan enregistrant la dernière position du véhicule lorsqu'il se gare -->
+        <service
+            android:name=".service.park.ParkService"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
     <!-- Déclarations de visibilité des paquets pour Android 11+ (Package Visibility / Package Filtering) -->

@@ -20,6 +20,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.rguilbeau.carlauncher.manager.AutoPlayManager;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.service.park.ParkService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.trip.TripService;
@@ -122,6 +123,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
         if (PermissionManager.hasLocationPermission(this)) {
             startTripService();
             startTripPersistenceService();
+            startParkService();
         } else {
             PermissionManager.requestLocationPermission(this);
         }
@@ -201,6 +203,18 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
     }
 
     /**
+     * Démarre le service d'enregistrement de la position de stationnement (ParkService).
+     */
+    private void startParkService() {
+        try {
+            Intent intent = new Intent(this, ParkService.class);
+            startService(intent);
+        } catch (Exception e) {
+            CarLog.e(TAG, "Failed to start ParkService", e);
+        }
+    }
+
+    /**
      * Gère la réponse de l'utilisateur aux demandes de permissions système.
      *
      * @param requestCode  Le code de requête passé lors de la demande.
@@ -219,6 +233,7 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
             public void onGranted() {
                 startTripService();
                 startTripPersistenceService();
+                startParkService();
                 recreate();
             }
 
