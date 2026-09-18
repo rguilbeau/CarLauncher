@@ -132,11 +132,11 @@ public class CardTrip extends FrameLayout implements TripListener {
     @Override
     public void onTripUpdated(TripStats daily, TripStats full) {
         try {
-            float distanceKm = daily.distanceMeters / 1000f;
-            long totalDriveTime = daily.driveTimeMillis;
+            float distanceKm = daily.getDistanceMeters() / 1000f;
+            int totalDriveTimeMinutes = daily.getDriveTimeMinutes();
 
-            long minutes = (totalDriveTime / (1000 * 60)) % 60;
-            long hours = (totalDriveTime / (1000 * 60 * 60));
+            int minutes = totalDriveTimeMinutes % 60;
+            int hours = totalDriveTimeMinutes / 60;
 
             // Formatage du temps de conduite en heure/minute
             String timeFormatted;

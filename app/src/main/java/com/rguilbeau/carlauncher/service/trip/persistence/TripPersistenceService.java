@@ -13,30 +13,26 @@ import com.rguilbeau.carlauncher.repository.TripDailyRepository;
 import com.rguilbeau.carlauncher.repository.dto.DailyTrip;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.service.trip.TripListener;
 import com.rguilbeau.carlauncher.service.trip.TripService;
 import com.rguilbeau.carlauncher.service.trip.TripStats;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Service d'arrière-plan chargé de persister les statistiques de trajet en base de données.
  * <p>
- * Interroge {@link TripService} de manière synchrone (via {@link TripService#getFullStats()}) et
- * enregistre les statistiques "full" (jamais affectées par un reset manuel de l'utilisateur) via
- * {@link TripDailyRepository}, selon trois déclencheurs cumulés : une sauvegarde immédiate à
- * chaque retour à l'arrêt du véhicule, un flush immédiat à la coupure du contact, et une
- * sauvegarde périodique inconditionnelle toutes les minutes, qu'importe l'état du véhicule
- * (roulant ou à l'arrêt) — filet de sécurité couvrant les longs trajets sans arrêt. L'accès
- * synchrone évite toute dépendance à l'ordre d'abonnement entre services : la valeur lue est
- * toujours celle en vigueur au moment exact de la sauvegarde.
+ * Enregistre les statistiques "full" (jamais affectées par un reset manuel de l'utilisateur) via
+ * {@link TripDailyRepository}, selon trois déclencheurs complémentaires : une sauvegarde immédiate
+ * à l'arrêt du véhicule (front descendant vers 0 km/h) puis à chaque mise à jour des statistiques
+ * tant qu'il reste à l'arrêt (voir {@link #onTelemetryUpdated} et {@link #onTripUpdated}), un
+ * flush immédiat à la coupure du contact, et une sauvegarde périodique toutes les minutes tant que
+ * le véhicule est en mouvement (voir {@link #periodicSave}) — filet de sécurité couvrant les longs
+ * trajets sans arrêt.
  * </p>
  */
-public class TripPersistenceService extends Service implements CarTelemetryListener {
+public class TripPersistenceService extends Service implements CarTelemetryListener, TripListener {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
@@ -44,7 +40,7 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
     private static final String TAG = "TripPersistenceService";
 
     /**
-     * Intervalle entre deux sauvegardes périodiques inconditionnelles (roulant ou à l'arrêt).
+     * Intervalle entre deux sauvegardes périodiques pendant la conduite.
      */
     private static final long SAVE_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
@@ -75,19 +71,30 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
     private int lastSpeedKmH = -1;
 
     /**
-     * Planificateur de la sauvegarde périodique inconditionnelle.
+     * Indique si le véhicule est actuellement considéré en mouvement (vitesse non nulle à la
+     * dernière télémétrie reçue). Utilisé par {@link #onTripUpdated} pour ne sauvegarder les
+     * statistiques "full" que pendant les phases d'arrêt.
+     */
+    private boolean carIsDriving = false;
+
+    /**
+     * Planificateur de la sauvegarde périodique.
      */
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     /**
-     * Tâche répétée sauvegardant les statistiques "full" toutes les {@link #SAVE_INTERVAL_MS}, en
-     * continu et indépendamment de l'état du véhicule (roulant ou à l'arrêt). Démarrée une seule
-     * fois dans {@link #onCreate()} et arrêtée uniquement à la destruction du service.
+     * Tâche répétée sauvegardant les statistiques "full" toutes les {@link #SAVE_INTERVAL_MS},
+     * uniquement pendant que le véhicule roule ({@link #carIsDriving}) : à l'arrêt, la persistance
+     * est déjà assurée en temps réel par {@link #onTripUpdated}. Démarrée en continu dès
+     * {@link #onCreate()} et arrêtée uniquement à la destruction du service ; elle se contente de
+     * ne rien faire aux ticks survenant pendant les phases d'arrêt.
      */
     private final Runnable periodicSave = new Runnable() {
         @Override
         public void run() {
-            persistCurrentStats();
+            if (carIsDriving) {
+                persistCurrentStats();
+            }
             handler.postDelayed(this, SAVE_INTERVAL_MS);
         }
     };
@@ -103,6 +110,7 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
         public void onServiceConnected(ComponentName name, IBinder service) {
             TripService.LocalBinder binder = (TripService.LocalBinder) service;
             tripService = binder.getService();
+            tripService.addListener(TripPersistenceService.this);
             CarLog.d(TAG, "TripPersistenceService connected to TripService.");
         }
 
@@ -141,7 +149,7 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
 
     /**
      * Initialise le service : liaison au service de trajet et au service de télémétrie, puis
-     * démarrage de la boucle de sauvegarde périodique inconditionnelle.
+     * démarrage de la boucle de sauvegarde périodique (active uniquement pendant la conduite).
      */
     @Override
     public void onCreate() {
@@ -156,9 +164,10 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
     }
 
     /**
-     * Déclenche une sauvegarde immédiate dès que le véhicule s'arrête (front descendant vers 0 km/h).
-     * La sauvegarde périodique inconditionnelle ({@link #periodicSave}) continue par ailleurs de
-     * tourner indépendamment de cet événement.
+     * Met à jour l'état de conduite ({@link #carIsDriving}) à partir de la vitesse télémétrique, et
+     * déclenche une sauvegarde immédiate dès l'arrêt du véhicule (front descendant vers 0 km/h) —
+     * dès lors, la sauvegarde périodique ({@link #periodicSave}) s'interrompt au profit de la
+     * sauvegarde en temps réel faite par {@link #onTripUpdated}.
      *
      * @param speed La vitesse actuelle du véhicule en km/h.
      * @param rpm   Le régime moteur actuel, non utilisé ici.
@@ -167,10 +176,28 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
     public void onTelemetryUpdated(int speed, int rpm) {
         if (speed == 0 && lastSpeedKmH != 0) {
             // Front descendant : le véhicule vient de s'arrêter
+            carIsDriving = false;
             persistCurrentStats();
+        } else if (speed != 0) {
+            carIsDriving = true;
         }
 
         lastSpeedKmH = speed;
+    }
+
+    /**
+     * Sauvegarde les statistiques "full" à chaque notification reçue tant que le véhicule est à
+     * l'arrêt ({@link #carIsDriving} à false) ; les notifications reçues pendant la conduite sont
+     * ignorées, cette période restant couverte par la sauvegarde périodique ({@link #periodicSave}).
+     *
+     * @param daily Les statistiques "daily" affichées à l'utilisateur, non utilisées ici.
+     * @param full  Les statistiques "full" à jour du jour, à persister si le véhicule est à l'arrêt.
+     */
+    @Override
+    public void onTripUpdated(TripStats daily, TripStats full) {
+        if (!carIsDriving) {
+            persist(full);
+        }
     }
 
     /**
@@ -210,13 +237,12 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
         }
 
         try {
-            Date date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(full.dayKey);
-            double distanceKm = full.distanceMeters / 1000.0;
-            int timeMinutes = (int) (full.driveTimeMillis / 60000);
+            double distanceKm = full.getDistanceMeters() / 1000.0;
+            int timeMinutes = full.getDriveTimeMinutes();
 
-            TripDailyRepository.get().update(new DailyTrip(date, distanceKm, timeMinutes));
-        } catch (ParseException e) {
-            CarLog.e(TAG, "Unable to parse day key: " + full.dayKey, e);
+            TripDailyRepository.get().update(new DailyTrip(full.getDate(), distanceKm, timeMinutes));
+        } catch (Exception e) {
+            CarLog.e(TAG, "Unable to persist TripDaily in database", e);
         }
     }
 
@@ -241,6 +267,9 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
 
         try {
             if (isTripServiceBound) {
+                if (tripService != null) {
+                    tripService.removeListener(this);
+                }
                 unbindService(tripServiceConnection);
                 isTripServiceBound = false;
             }
