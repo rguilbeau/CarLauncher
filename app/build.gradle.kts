@@ -14,7 +14,15 @@ val localProperties = Properties().apply {
         file.inputStream().use { load(it) }
     }
 }
-fun secret(key: String): String = localProperties.getProperty(key) ?: System.getenv(key) ?: ""
+fun secret(key: String): String = (localProperties.getProperty(key) ?: System.getenv(key) ?: "").trim()
+
+// Échappe la valeur pour une insertion sûre dans un literal String Java (buildConfigField)
+fun secretLiteral(key: String): String {
+    val escaped = secret(key)
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return "\"$escaped\""
+}
 
 android {
     namespace = "com.rguilbeau.carlauncher"
@@ -27,9 +35,9 @@ android {
         versionCode = code
         versionName = name
 
-        buildConfigField("String", "DB_URL", "\"${secret("DB_URL")}\"")
-        buildConfigField("String", "DB_USER", "\"${secret("DB_USER")}\"")
-        buildConfigField("String", "DB_PASSWORD", "\"${secret("DB_PASSWORD")}\"")
+        buildConfigField("String", "DB_URL", secretLiteral("DB_URL"))
+        buildConfigField("String", "DB_USER", secretLiteral("DB_USER"))
+        buildConfigField("String", "DB_PASSWORD", secretLiteral("DB_PASSWORD"))
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
