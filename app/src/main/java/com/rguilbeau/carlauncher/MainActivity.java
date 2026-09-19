@@ -25,6 +25,7 @@ import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.trip.TripService;
 import com.rguilbeau.carlauncher.service.trip.persistence.TripPersistenceService;
+import com.rguilbeau.carlauncher.utils.DeviceEnvironment;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
@@ -113,6 +114,10 @@ public class MainActivity extends AppCompatActivity implements CarTelemetryListe
         hideSystemUI();
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        if (!DeviceEnvironment.isProd()) {
+            findViewById(R.id.txtDevBadge).setVisibility(View.VISIBLE);
+        }
 
         autoPlayManager = new AutoPlayManager(this);
 

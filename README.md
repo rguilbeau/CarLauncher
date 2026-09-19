@@ -122,17 +122,21 @@ Le projet Neon possède deux branches, avec les mêmes identifiants (user/passwo
 | `production` | Base utilisée en usage réel sur l'autoradio |
 | `dev` | Base utilisée pour le développement local / émulateur |
 
+Le choix de la branche utilisée ne dépend **pas** de qui compile l'application (Android Studio vs pipeline GitHub) mais du device sur lequel elle tourne — voir [Environnements Dev / Prod](#environnements-dev--prod) ci-dessous.
+
 ### `local.properties` et secrets
 
-Les identifiants de connexion (URL JDBC, user, password) ainsi que les mots de passe de signature de l'APK **ne sont jamais commités** : ils sont lus depuis `local.properties` (fichier local, listé dans `.gitignore`) par `app/build.gradle.kts`, puis exposés au code Java via des champs générés (`BuildConfig.DB_URL`, `BuildConfig.DB_USER`, `BuildConfig.DB_PASSWORD`).
+Les identifiants de connexion (URLs JDBC, user, password) ainsi que les mots de passe de signature de l'APK **ne sont jamais commités** : ils sont lus depuis `local.properties` (fichier local, listé dans `.gitignore`) par `app/build.gradle.kts`, puis exposés au code Java via des champs générés (`BuildConfig.DEV_DB_URL`, `BuildConfig.PROD_DB_URL`, `BuildConfig.DB_USER`, `BuildConfig.DB_PASSWORD`).
 
-En l'absence de `local.properties` (typiquement en CI/GitHub Actions), le script retombe automatiquement sur des **variables d'environnement** de même nom (`secret(key)` cherche d'abord `local.properties`, puis `System.getenv(key)`).
+En l'absence de `local.properties` (typiquement en CI/GitHub Actions), le script retombe automatiquement sur des **variables d'environnement** de même nom (`secret(key)` cherche d'abord `local.properties`, puis `System.getenv(key)`) — dans ce cas les valeurs viennent des **secrets du dépôt GitHub**.
 
 Clés attendues dans `local.properties` :
 
 ```properties
-# Connexion base de données (Neon / PostgreSQL)
-DB_URL=jdbc:postgresql://<host-neon>:5432/car_launcher
+# Connexion base de données (Neon / PostgreSQL) — les deux URLs sont toujours embarquées,
+# le user/password est le même pour les deux branches (voir section Environnements Dev / Prod)
+DEV_DB_URL=jdbc:postgresql://<host-neon-dev>:5432/car_launcher
+PROD_DB_URL=jdbc:postgresql://<host-neon-prod>:5432/car_launcher
 DB_USER=<utilisateur>
 DB_PASSWORD=<mot_de_passe>
 
@@ -142,6 +146,37 @@ SIGNING_KEY_PASSWORD=<mot_de_passe_cle>
 ```
 
 > **Sécurité :** ce fichier contient des secrets réels en local (identifiants Neon notamment) et ne doit **jamais** être ajouté au dépôt Git. Il est déjà exclu via `.gitignore` (`local.properties`) ; en cas de doute, vérifier avec `git status` avant tout commit/push.
+
+### Environnements Dev / Prod
+
+Le launcher se met à jour lui-même en téléchargeant la dernière release GitHub (Self-Update, voir [Déploiement Automatisé](#déploiement-automatisé-github-actions)) : **un seul et même APK** circule donc, que ce soit sur l'autoradio réel ou sur un device de test. Séparer dev/prod via deux artefacts de build différents aurait empêché de tester ce mécanisme de mise à jour sans risquer d'installer/exécuter la configuration prod ailleurs que sur la voiture.
+
+À la place, le choix de la branche Neon utilisée se fait **à l'exécution, en fonction du device**, et non du build :
+
+* `BuildConfig` embarque toujours les deux URLs (`DEV_DB_URL` et `PROD_DB_URL`).
+* `DeviceEnvironment.isProd()` (`utils/DeviceEnvironment.java`) vérifie la présence d'un fichier marqueur : `/system/etc/carlauncher_prod`.
+* Ce marqueur n'est déposé **que** par `install.bat`, lors du flash en `priv-app`, et seulement après confirmation explicite dans le script ("Est-ce que ce device est le VRAI device de PRODUCTION ?"). Étant dans `/system`, il survit aux mises à jour de l'application (y compris via le Self-Update).
+* `NeonClient` choisit `BuildConfig.PROD_DB_URL` ou `BuildConfig.DEV_DB_URL` selon `DeviceEnvironment.isProd()`.
+* Sur tout device non marqué prod, un badge rouge **"DEV"** s'affiche en bas de l'écran d'accueil pour visualiser immédiatement l'environnement actif.
+
+Conséquence pratique : installer/tester l'APK (y compris la release GitHub officielle) sur un émulateur ou un device de test ne touchera **jamais** la base de production, sauf à avoir explicitement répondu "oui" à la question de `install.bat` sur ce device.
+
+## Préférences locales (SharedPreferences)
+
+En complément de la base Neon, l'application conserve certaines données uniquement sur le device (raccourcis assignés aux boutons, dernière position météo en cache, compteurs de trajet...) via les **SharedPreferences** standard d'Android, toutes regroupées dans un seul fichier (`CarLauncherPrefs`).
+
+### `PerfsKey` : centralisation des clés
+
+Toutes les clés utilisées à travers l'application sont centralisées dans `utils/PerfsKey.java`, regroupées par classe imbriquée correspondant à leur classe d'origine (`PerfsKey.TripStats`, `PerfsKey.TripService`, `PerfsKey.ShortcutStrategy`, `PerfsKey.CardWeather`...). Chaque classe imbriquée préfixe ses propres clés (ex: `trip_stats_`, `card_weather_`) pour éviter toute collision au sein du fichier partagé.
+
+### `PerfsKeyMigration` : faire évoluer une clé sans perte de données
+
+Renommer une clé ou changer le type de son contenu ne doit **jamais** nécessiter de vider les préférences existantes ni d'inventer une nouvelle clé arbitraire à la volée. `utils/PerfsKeyMigration.java` fournit un système de migration versionné, inspiré des migrations de base de données :
+
+* `PerfsKey.MIGRATIONS` déclare un tableau ordonné d'étapes ; l'index d'une étape correspond à la version de schéma qu'elle fait atteindre.
+* Helpers disponibles pour construire une étape : `renameKey(oldKey, newKey)`, `changeType(key, fromType, toType)` (conversion automatique entre `Integer`, `Long`, `Float`, `Boolean`, `String`), `removeKey(key)`, et `clear(prefsFileName)` (suppression complète d'un fichier de préférences, y compris un fichier legacy qui n'est plus utilisé).
+* `PerfsKeyMigration.migrate(context)` est appelé une seule fois, tout au début de `CarLauncherApp.onCreate()` (avant tout accès aux préférences par un composant de l'app). Chaque étape manquante est rejouée et **committée individuellement** : un crash en cours de route ne rejoue pas une migration déjà appliquée.
+* Pour ajouter une migration : ajouter une nouvelle entrée à la fin de `MIGRATIONS`, ne jamais modifier ni supprimer une entrée déjà publiée.
 
 ## Compilation (Release)
 

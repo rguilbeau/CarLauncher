@@ -35,7 +35,10 @@ android {
         versionCode = code
         versionName = name
 
-        buildConfigField("String", "DB_URL", secretLiteral("DB_URL"))
+        // Les deux URL sont toujours embarquées dans le même build : c'est DeviceEnvironment.isProd()
+        // (marqueur pose par install.bat) qui determine laquelle est utilisee a l'execution.
+        buildConfigField("String", "DEV_DB_URL", secretLiteral("DEV_DB_URL"))
+        buildConfigField("String", "PROD_DB_URL", secretLiteral("PROD_DB_URL"))
         buildConfigField("String", "DB_USER", secretLiteral("DB_USER"))
         buildConfigField("String", "DB_PASSWORD", secretLiteral("DB_PASSWORD"))
 

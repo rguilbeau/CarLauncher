@@ -32,7 +32,8 @@ jobs:
 
       - name: Compilation et Signature de l'APK Release
         env:
-          DB_URL: ${{ secrets.DB_URL }}
+          DEV_DB_URL: ${{ secrets.DEV_DB_URL }}
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
