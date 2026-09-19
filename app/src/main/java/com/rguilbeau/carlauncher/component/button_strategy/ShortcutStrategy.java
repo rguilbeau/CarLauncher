@@ -21,6 +21,7 @@ import androidx.annotation.Nullable;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.provider.apps.AppInfo;
 import com.rguilbeau.carlauncher.provider.apps.AppProvider;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;
@@ -46,11 +47,6 @@ public class ShortcutStrategy implements ButtonStrategy {
     private static final String TAG = "ButtonShortcut";
 
     /**
-     * Nom du fichier de préférences partagées.
-     */
-    private static final String PREFS_NAME = "CarLauncherPrefs";
-
-    /**
      * Identifiant unique de ce raccourci, servant de clé dans les SharedPreferences pour mémoriser l'application associée.
      */
     private final String shortcutType;
@@ -73,8 +69,8 @@ public class ShortcutStrategy implements ButtonStrategy {
     @Override
     public void onClick(Context context) {
         try {
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            String intentPackage = prefs.getString(shortcutType, "");
+            SharedPreferences prefs = context.getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
+            String intentPackage = prefs.getString(PerfsKey.ShortcutStrategy.getType(shortcutType), "");
 
             if (intentPackage.isEmpty()) {
                 Toast.makeText(context, "Aucune application assignée. Faites un appui long.", Toast.LENGTH_LONG).show();
@@ -158,8 +154,8 @@ public class ShortcutStrategy implements ButtonStrategy {
                     .setAdapter(adapter, (dialogInterface, which) -> {
                         AppInfo selectedApp = appList.get(which);
 
-                        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                        prefs.edit().putString(shortcutType, selectedApp.packageName).apply();
+                        SharedPreferences prefs = context.getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
+                        prefs.edit().putString(PerfsKey.ShortcutStrategy.getType(shortcutType), selectedApp.packageName).apply();
 
                         Toast.makeText(context, selectedApp.name + " assignée avec succès !", Toast.LENGTH_SHORT).show();
                     })

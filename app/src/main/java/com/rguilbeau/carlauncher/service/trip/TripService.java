@@ -20,6 +20,7 @@ import androidx.annotation.NonNull;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
 import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.text.SimpleDateFormat;
@@ -45,14 +46,6 @@ public class TripService extends Service implements LocationListener, CarTelemet
      */
     private static final String TAG = "TripService";
     /**
-     * Nom du fichier de préférences partagées utilisé pour la sauvegarde des informations permettant le smart reset.
-     */
-    private static final String PREFS_NAME = "CarLauncherPrefs";
-    /**
-     * Clé des préférences pour stocker l'horodatage précis de la dernière coupure de contact.
-     */
-    public static final String KEY_LAST_ACC_OFF = "lastAccOffTime";
-    /**
      * Vitesse minimale (en km/h) issue du bus CAN nécessaire pour considérer que le véhicule se déplace.
      */
     private static final float MIN_SPEED_KMH = 2.0f;
@@ -66,14 +59,6 @@ public class TripService extends Service implements LocationListener, CarTelemet
      * Rayon maximal d'imprécision (en mètres) toléré par le capteur GPS.
      */
     private static final float MAX_ACCURACY_M = 20.0f;
-    /**
-     * La clé (nom) de l'instantané de statistique de trajet visible (avec le reset manuel pris en compte).
-     */
-    private static final String DAILY_STATS_KEY = "dailyStats";
-    /**
-     * La clé (nom) de l'instantané de statistique de trajet complet de la journée (sans le reset manuel pris en compte).
-     */
-    private static final String DAILY_STATS_FULL_KEY = "fullDailyStats";
     /**
      * L'instantané de statistique de trajet visible (avec le reset manuel pris en compte).
      */
@@ -181,13 +166,13 @@ public class TripService extends Service implements LocationListener, CarTelemet
     @Override
     public void onCreate() {
         super.onCreate();
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        prefs = getSharedPreferences(PerfsKey.getPrefsName(), MODE_PRIVATE);
 
         Intent intent = new Intent(this, CarTelemetryService.class);
         isBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
-        dailyTrip = TripStats.load(getApplicationContext(), DAILY_STATS_KEY);
-        fullDailyTrip = TripStats.load(getApplicationContext(), DAILY_STATS_FULL_KEY);
+        dailyTrip = TripStats.load(getApplicationContext(), PerfsKey.TripService.getDailyStats());
+        fullDailyTrip = TripStats.load(getApplicationContext(), PerfsKey.TripService.getDailyStatsFull());
 
         try {
             locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -280,7 +265,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
             accumulateElapsedTime(monotonicNow);
             lastTickTime = 0;
 
-            prefs.edit().putLong(KEY_LAST_ACC_OFF, wallTimeNow).commit();
+            prefs.edit().putLong(PerfsKey.TripService.getLastAccOff(), wallTimeNow).commit();
 
             CarLog.i(TAG, "Ignition off (ACC_OFF) trip end");
         }
@@ -307,7 +292,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
     private void checkSmartReset() {
         try {
             long wallTimeNow = System.currentTimeMillis();
-            long lastOffTime = prefs.getLong(KEY_LAST_ACC_OFF, wallTimeNow);
+            long lastOffTime = prefs.getLong(PerfsKey.TripService.getLastAccOff(), wallTimeNow);
             long gapMillis = wallTimeNow - lastOffTime;
             if (gapMillis < 0) {
                 gapMillis = 0; // Sécurité si l'horloge système a reculé pendant la veille

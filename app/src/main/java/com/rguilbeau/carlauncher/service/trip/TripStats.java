@@ -5,6 +5,8 @@ import static android.content.Context.MODE_PRIVATE;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
+
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -17,24 +19,6 @@ import java.util.Locale;
  * {@link TripService#getFullStats()}.
  */
 public class TripStats {
-    /**
-     * Nom du fichier de préférences partagées utilisé pour la sauvegarde des statistiques.
-     */
-    private static final String PREFS_NAME = "CarLauncherPrefs";
-    /**
-     * Clé des préférences pour stocker la distance totale parcourue.
-     */
-    private static final String KEY_DISTANCE = "distance";
-
-    /**
-     * Clé des préférences pour stocker le temps total de conduite accumulé.
-     */
-    private static final String KEY_DRIVE_TIME = "driveTime";
-
-    /**
-     * Clé des préférences pour stocker la date d'enregistrement du trajet, servant au reset journalier.
-     */
-    private static final String KEY_SAVED_DATE = "savedDate";
     /**
      * Distance parcourue, en mètres.
      */
@@ -71,9 +55,9 @@ public class TripStats {
 
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
 
-        this.distanceMeters = prefs.getFloat(prefixKey + KEY_DISTANCE, 0);
-        this.driveTimeMinutes = prefs.getInt(prefixKey + KEY_DRIVE_TIME, 0);
-        this.dayKey = prefs.getString(prefixKey + KEY_SAVED_DATE, today);
+        this.distanceMeters = prefs.getFloat(prefixKey + PerfsKey.TripStats.getDistance(), 0);
+        this.driveTimeMinutes = prefs.getInt(prefixKey + PerfsKey.TripStats.getDriveTime(), 0);
+        this.dayKey = prefs.getString(prefixKey + PerfsKey.TripStats.getSavedDate(), today);
     }
 
     /**
@@ -84,7 +68,7 @@ public class TripStats {
      * @return L'instantané de statistique de trajet
      */
     static TripStats load(Context context, String key) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences prefs = context.getSharedPreferences(PerfsKey.getPrefsName(), MODE_PRIVATE);
         return new TripStats(prefs, key);
     }
 
@@ -98,9 +82,9 @@ public class TripStats {
         this.dayKey = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
 
         prefs.edit()
-                .putFloat(prefixKey + KEY_DISTANCE, 0)
-                .putInt(prefixKey + KEY_DRIVE_TIME, 0)
-                .putString(prefixKey + KEY_SAVED_DATE, dayKey)
+                .putFloat(prefixKey + PerfsKey.TripStats.getDistance(), 0)
+                .putInt(prefixKey + PerfsKey.TripStats.getDriveTime(), 0)
+                .putString(prefixKey + PerfsKey.TripStats.getSavedDate(), dayKey)
                 .apply();
     }
 
@@ -118,7 +102,7 @@ public class TripStats {
         }
 
         this.driveTimeMinutes += minutesToAccumulate;
-        prefs.edit().putInt(prefixKey + KEY_DRIVE_TIME, driveTimeMinutes).apply();
+        prefs.edit().putInt(prefixKey + PerfsKey.TripStats.getDriveTime(), driveTimeMinutes).apply();
         return true;
     }
 
@@ -132,7 +116,7 @@ public class TripStats {
     public boolean accumulateDistance(float distanceMetersToAccumulate) {
         if (distanceMetersToAccumulate > 0) {
             this.distanceMeters += distanceMetersToAccumulate;
-            prefs.edit().putFloat(prefixKey + KEY_DISTANCE, distanceMeters).apply();
+            prefs.edit().putFloat(prefixKey + PerfsKey.TripStats.getDistance(), distanceMeters).apply();
             return true;
         }
         return false;

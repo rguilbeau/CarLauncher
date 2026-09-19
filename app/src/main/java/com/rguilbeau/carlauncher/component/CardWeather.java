@@ -30,6 +30,7 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import org.json.JSONObject;
@@ -70,21 +71,6 @@ public class CardWeather extends FrameLayout implements Runnable {
      * Intervalle de rafraîchissement régulier des données météo en millisecondes (10 minutes).
      */
     private static final long REFRESH_INTERVAL_MS = 600000L;
-
-    /**
-     * Nom du fichier de préférences partagées utilisé pour sauvegarder la dernière position GPS.
-     */
-    private static final String PREF_NAME = "WeatherPrefs";
-
-    /**
-     * Clé de préférence pour stocker la dernière latitude connue.
-     */
-    private static final String PREF_LAT = "last_lat";
-
-    /**
-     * Clé de préférence pour stocker la dernière longitude connue.
-     */
-    private static final String PREF_LON = "last_lon";
 
     /**
      * Composant visuel affichant la température actuelle en °C.
@@ -252,10 +238,10 @@ public class CardWeather extends FrameLayout implements Runnable {
      * Permet d'éviter l'attente du signal GPS lors d'un démarrage à froid.
      */
     private void loadLocationFromPrefs() {
-        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        if (prefs.contains(PREF_LAT) && prefs.contains(PREF_LON)) {
-            float lat = prefs.getFloat(PREF_LAT, 0f);
-            float lon = prefs.getFloat(PREF_LON, 0f);
+        SharedPreferences prefs = getContext().getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
+        if (prefs.contains(PerfsKey.CardWeather.getLastLat()) && prefs.contains(PerfsKey.CardWeather.getLastLon())) {
+            float lat = prefs.getFloat(PerfsKey.CardWeather.getLastLat(), 0f);
+            float lon = prefs.getFloat(PerfsKey.CardWeather.getLastLon(), 0f);
 
             lastKnownLocation = new Location("CacheManuel");
             lastKnownLocation.setLatitude(lat);
@@ -272,10 +258,10 @@ public class CardWeather extends FrameLayout implements Runnable {
      */
     private void saveLocationToPrefs(Location location) {
         if (location == null) return;
-        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        SharedPreferences prefs = getContext().getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
         prefs.edit()
-                .putFloat(PREF_LAT, (float) location.getLatitude())
-                .putFloat(PREF_LON, (float) location.getLongitude())
+                .putFloat(PerfsKey.CardWeather.getLastLat(), (float) location.getLatitude())
+                .putFloat(PerfsKey.CardWeather.getLastLon(), (float) location.getLongitude())
                 .apply();
     }
 

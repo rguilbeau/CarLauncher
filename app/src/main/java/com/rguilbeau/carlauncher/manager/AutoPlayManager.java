@@ -13,6 +13,7 @@ import android.os.Looper;
 
 
 import com.rguilbeau.carlauncher.service.notification.NotificationService;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.List;
@@ -33,11 +34,6 @@ public class AutoPlayManager {
      * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
      */
     private static final String TAG = "AutoPlayManager";
-
-    /**
-     * Nom du fichier de préférences partagées utilisé pour récupérer l'application musicale configurée.
-     */
-    private static final String PREFS_NAME = "CarLauncherPrefs";
 
     /**
      * Délai d'attente avant le lancement de l'application musicale lors d'un démarrage différé
@@ -591,8 +587,8 @@ public class AutoPlayManager {
      */
     private String getSavedMusicPackage() {
         try {
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            return prefs.getString("music", "");
+            SharedPreferences prefs = context.getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
+            return prefs.getString(PerfsKey.ShortcutStrategy.getType("music"), "");
         } catch (Exception e) {
             return "";
         }
