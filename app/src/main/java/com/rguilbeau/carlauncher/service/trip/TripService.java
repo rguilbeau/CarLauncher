@@ -197,6 +197,8 @@ public class TripService extends Service implements LocationListener, CarTelemet
         } catch (Exception e) {
             CarLog.e(TAG, "Error initializing GPS", e);
         }
+
+        checkSmartReset();
     }
 
     /**
@@ -270,14 +272,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
         long monotonicNow = SystemClock.elapsedRealtime();
 
         if (accOn) {
-            long lastOffTime = prefs.getLong(KEY_LAST_ACC_OFF, wallTimeNow);
-            long gapMillis = wallTimeNow - lastOffTime;
-            if (gapMillis < 0) {
-                gapMillis = 0; // Sécurité si l'horloge système a reculé pendant la veille
-            }
-
-            checkSmartReset(wallTimeNow, gapMillis);
-
+            checkSmartReset();
             lastTickTime = monotonicNow;
 
             CarLog.i(TAG, "Ignition on (ACC_ON) trip start");
@@ -308,13 +303,17 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
     /**
      * Vérifie s'il est nécessaire de remettre les statistiques du trajet à zéro (changement de jour + 3h de pause).
-     *
-     * @param currentTime L'heure actuelle en millisecondes.
-     * @param gapMillis   La durée écoulée depuis la dernière coupure de contact.
      */
-    private void checkSmartReset(long currentTime, long gapMillis) {
+    private void checkSmartReset() {
         try {
-            String todayStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date(currentTime));
+            long wallTimeNow = System.currentTimeMillis();
+            long lastOffTime = prefs.getLong(KEY_LAST_ACC_OFF, wallTimeNow);
+            long gapMillis = wallTimeNow - lastOffTime;
+            if (gapMillis < 0) {
+                gapMillis = 0; // Sécurité si l'horloge système a reculé pendant la veille
+            }
+
+            String todayStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date(wallTimeNow));
 
             long offDurationHours = gapMillis / (1000 * 60 * 60);
 
