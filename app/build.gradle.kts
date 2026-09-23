@@ -95,6 +95,8 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.16.0")
     // File d'attente persistante (contrainte réseau) pour les écritures en base de données
     implementation("androidx.work:work-runtime:2.10.0")
+    // Communication série USB avec l'adaptateur CANable (SLCAN)
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

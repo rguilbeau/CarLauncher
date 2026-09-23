@@ -10,28 +10,31 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 
 import com.rguilbeau.carlauncher.manager.PermissionManager;
 import com.rguilbeau.carlauncher.repository.CarLocationRepository;
 import com.rguilbeau.carlauncher.repository.dto.CarLocation;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.service.telemetry.TelemetryService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
+
+import java.util.function.Consumer;
 
 /**
  * Service d'arrière-plan chargé d'enregistrer la dernière position connue du véhicule lorsqu'il
  * se gare.
  * <p>
- * S'abonne au {@link CarTelemetryService} pour détecter le franchissement à la baisse du seuil
+ * S'abonne au {@link TelemetryService} pour détecter le franchissement à la baisse du seuil
  * de vitesse ({@link #MIN_SPEED_KMH}), déclencheur principal de la sauvegarde. La coupure du
- * contact (ACC_OFF) agit comme filet de sécurité (fallback) au cas où la vitesse n'aurait pas
+ * contact agit comme filet de sécurité (fallback) au cas où la vitesse n'aurait pas
  * transité sous ce seuil avant l'arrêt du véhicule.
  * </p>
  */
-public class ParkService extends Service implements LocationListener, CarTelemetryListener {
+public class ParkService extends Service implements LocationListener {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation de ce service.
@@ -63,17 +66,34 @@ public class ParkService extends Service implements LocationListener, CarTelemet
      * Dernière vitesse connue transmise par le bus CAN, utilisée pour détecter le franchissement
      * à la baisse du seuil {@link #MIN_SPEED_KMH}.
      */
-    private int lastSpeedKmH = -1;
+    private double lastSpeedKmH = -1;
 
     /**
      * Référence vers le service central de télémétrie de la voiture.
      */
-    private CarTelemetryService telemetryService;
+    private TelemetryService telemetryService;
 
     /**
      * Indicateur d'état précisant si le ParkService est actuellement attaché au service de télémétrie.
      */
     private boolean isBound = false;
+
+    /**
+     * Rejoue les observateurs {@code Property} sur le thread principal, pour garder tout l'état
+     * mutable de ce service (accès concurrent depuis {@link #onLocationChanged}) sur un seul et
+     * même thread — voir la doc de
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property} sur le thread
+     * d'appel des observateurs.
+     */
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    /**
+     * Instances stables des observateurs, conservées pour pouvoir se désabonner via
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind} (une
+     * référence de méthode réévaluée à chaque appel ne le permettrait pas, voir sa doc).
+     */
+    private final Consumer<Double> speedObserver = this::onSpeedChanged;
+    private final Consumer<Boolean> contactOnObserver = this::onContactOnChanged;
 
     /**
      * Gère le cycle de vie de la connexion avec le service de télémétrie.
@@ -84,9 +104,10 @@ public class ParkService extends Service implements LocationListener, CarTelemet
          */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
+            TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            telemetryService.addListener(ParkService.this);
+            telemetryService.getData().speed.bind(speedObserver);
+            telemetryService.getData().contactOn.bind(contactOnObserver);
             CarLog.d(TAG, "ParkService connected to CANbus.");
         }
 
@@ -108,7 +129,7 @@ public class ParkService extends Service implements LocationListener, CarTelemet
     public void onCreate() {
         super.onCreate();
 
-        Intent intent = new Intent(this, CarTelemetryService.class);
+        Intent intent = new Intent(this, TelemetryService.class);
         isBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
         try {
@@ -123,36 +144,38 @@ public class ParkService extends Service implements LocationListener, CarTelemet
 
     /**
      * Détecte le franchissement à la baisse du seuil {@link #MIN_SPEED_KMH} (front descendant) et
-     * déclenche la sauvegarde de la dernière position connue.
+     * déclenche la sauvegarde de la dernière position connue. Rejouée sur {@link #mainHandler}.
      *
      * @param speed La vitesse actuelle du véhicule en km/h.
-     * @param rpm   Le régime moteur actuel, non utilisé par ce service.
      */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        boolean wasMoving = lastSpeedKmH < 0 || lastSpeedKmH >= MIN_SPEED_KMH;
-        boolean isBelowThreshold = speed < MIN_SPEED_KMH;
+    private void onSpeedChanged(Double speed) {
+        mainHandler.post(() -> {
+            boolean wasMoving = lastSpeedKmH < 0 || lastSpeedKmH >= MIN_SPEED_KMH;
+            boolean isBelowThreshold = speed < MIN_SPEED_KMH;
 
-        if (wasMoving && isBelowThreshold) {
-            CarLog.i(TAG, "Speed dropped below " + MIN_SPEED_KMH + " km/h, saving car location.");
-            saveLastKnownLocation();
-        }
+            if (wasMoving && isBelowThreshold) {
+                CarLog.i(TAG, "Speed dropped below " + MIN_SPEED_KMH + " km/h, saving car location.");
+                saveLastKnownLocation();
+            }
 
-        lastSpeedKmH = speed;
+            lastSpeedKmH = speed;
+        });
     }
 
     /**
-     * Filet de sécurité (fallback) : sauvegarde la dernière position connue à la coupure du contact,
-     * au cas où la vitesse n'aurait pas transité sous {@link #MIN_SPEED_KMH} avant l'arrêt.
+     * Filet de sécurité (fallback) : sauvegarde la dernière position connue à la coupure du
+     * contact, au cas où la vitesse n'aurait pas transité sous {@link #MIN_SPEED_KMH} avant
+     * l'arrêt. Rejouée sur {@link #mainHandler}.
      *
-     * @param accOn true si le contact est mis, false sinon.
+     * @param contactOn true si le contact est mis, false sinon.
      */
-    @Override
-    public void onAccStateChanged(boolean accOn) {
-        if (!accOn) {
-            CarLog.i(TAG, "Ignition off (ACC_OFF), saving car location as fallback.");
-            saveLastKnownLocation();
-        }
+    private void onContactOnChanged(Boolean contactOn) {
+        mainHandler.post(() -> {
+            if (!contactOn) {
+                CarLog.i(TAG, "Ignition off (contact), saving car location as fallback.");
+                saveLastKnownLocation();
+            }
+        });
     }
 
     /**
@@ -199,7 +222,8 @@ public class ParkService extends Service implements LocationListener, CarTelemet
         try {
             if (isBound) {
                 if (telemetryService != null) {
-                    telemetryService.removeListener(this);
+                    telemetryService.getData().speed.unbind(speedObserver);
+                    telemetryService.getData().contactOn.unbind(contactOnObserver);
                 }
                 unbindService(serviceConnection);
                 isBound = false;

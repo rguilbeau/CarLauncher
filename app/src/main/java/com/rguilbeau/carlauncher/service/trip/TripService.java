@@ -1,25 +1,18 @@
 package com.rguilbeau.carlauncher.service.trip;
 
-import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.Binder;
-import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.SystemClock;
 
-import androidx.annotation.NonNull;
-
-import com.rguilbeau.carlauncher.manager.PermissionManager;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.service.telemetry.TelemetryService;
 import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
@@ -28,37 +21,26 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 
 /**
  * Service d'arrière-plan gérant l'enregistrement des statistiques de trajet.
  * <p>
- * S'abonne au {@link CarTelemetryService} pour détecter l'alimentation (ACC_ON/OFF).
- * Le temps de conduite est comptabilisé par minutes entières via le chronomètre matériel
+ * S'abonne au {@link TelemetryService} pour l'état du contact (durée de conduite) et le
+ * kilométrage (distance parcourue, voir {@link #onOdometerChanged}). Le temps de conduite est
+ * comptabilisé par minutes entières via le chronomètre matériel
  * (SystemClock.elapsedRealtime), pour éviter toute corruption lors des ajustements d'horloge
- * GPS/réseau et pour limiter la fréquence de notification des {@link TripListener} abonnés (voir
+ * réseau et pour limiter la fréquence de notification des {@link TripListener} abonnés (voir
  * {@link #accumulateElapsedTime}).
  * </p>
  */
-public class TripService extends Service implements LocationListener, CarTelemetryListener {
+public class TripService extends Service {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation de ce service.
      */
     private static final String TAG = "TripService";
-    /**
-     * Vitesse minimale (en km/h) issue du bus CAN nécessaire pour considérer que le véhicule se déplace.
-     */
-    private static final float MIN_SPEED_KMH = 2.0f;
 
-    /**
-     * Distance minimale (en mètres) requise entre deux relevés GPS successifs pour être ajoutée au total.
-     */
-    private static final float MIN_DISTANCE_M = 2.0f;
-
-    /**
-     * Rayon maximal d'imprécision (en mètres) toléré par le capteur GPS.
-     */
-    private static final float MAX_ACCURACY_M = 20.0f;
     /**
      * L'instantané de statistique de trajet visible (avec le reset manuel pris en compte).
      */
@@ -67,15 +49,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
      * L'instantané de statistique de trajet complet de la journée (sans le reset manuel pris en compte).
      */
     private TripStats fullDailyTrip;
-    /**
-     * Gestionnaire système Android fournissant les mises à jour de la localisation géographique.
-     */
-    private LocationManager locationManager;
 
-    /**
-     * Conserve en mémoire la dernière position GPS valide pour calculer la distance avec la nouvelle.
-     */
-    private Location lastLocation = null;
     /**
      * Les shared preferences pour sauvegarder les informations permettant le smart reset
      */
@@ -91,24 +65,43 @@ public class TripService extends Service implements LocationListener, CarTelemet
     private long lastTickTime = 0L;
 
     /**
-     * Dernière vitesse connue transmise par le bus CAN, utilisée pour valider le mouvement réel.
-     */
-    private float currentSpeedKmH = 0f;
-
-    /**
      * État actuel de l'alimentation du véhicule (true = contact mis, false = contact coupé).
      */
     private boolean isAccOn = false;
 
     /**
+     * Dernier kilométrage connu de l'odomètre, pour calculer la distance parcourue avec le
+     * suivant. Vaut -1 tant qu'aucune valeur n'a encore été reçue (voir {@link #onOdometerChanged}) :
+     * la toute première valeur reçue n'est jamais traduite en distance, elle ne sert qu'à amorcer
+     * ce repère.
+     */
+    private long lastOdometerKm = -1;
+
+    /**
      * Référence vers le service central de télémétrie de la voiture.
      */
-    private CarTelemetryService telemetryService;
+    private TelemetryService telemetryService;
 
     /**
      * Indicateur d'état précisant si le TripService est actuellement attaché au service de télémétrie.
      */
     private boolean isBound = false;
+
+    /**
+     * Rejoue les observateurs {@code Property} sur le thread principal, pour garder tout l'état
+     * mutable de ce service sur un seul et même thread — voir la doc de
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property} sur le thread
+     * d'appel des observateurs.
+     */
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    /**
+     * Instances stables des observateurs, conservées pour pouvoir se désabonner via
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind} (une
+     * référence de méthode réévaluée à chaque appel ne le permettrait pas, voir sa doc).
+     */
+    private final Consumer<Boolean> contactOnObserver = this::onContactOnChanged;
+    private final Consumer<Long> odometerObserver = this::onOdometerChanged;
 
     /**
      * Liste des écouteurs abonnés aux statistiques de trajet.
@@ -143,9 +136,10 @@ public class TripService extends Service implements LocationListener, CarTelemet
          */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
+            TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            telemetryService.addListener(TripService.this);
+            telemetryService.getData().contactOn.bind(contactOnObserver);
+            telemetryService.getData().odometer.bind(odometerObserver);
             CarLog.d(TAG, "TripService connected to CANbus.");
         }
 
@@ -159,29 +153,19 @@ public class TripService extends Service implements LocationListener, CarTelemet
     };
 
     /**
-     * Initialise le service : ouvre les préférences persistantes, se lie au service de télémétrie
-     * et démarre les mises à jour GPS si la permission de localisation est accordée.
+     * Initialise le service : ouvre les préférences persistantes et se lie au service de
+     * télémétrie.
      */
-    @SuppressLint("MissingPermission")
     @Override
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(PerfsKey.getPrefsName(), MODE_PRIVATE);
 
-        Intent intent = new Intent(this, CarTelemetryService.class);
+        Intent intent = new Intent(this, TelemetryService.class);
         isBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
         dailyTrip = TripStats.load(getApplicationContext(), PerfsKey.TripService.getDailyStats());
         fullDailyTrip = TripStats.load(getApplicationContext(), PerfsKey.TripService.getDailyStatsFull());
-
-        try {
-            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            if (locationManager != null && PermissionManager.hasLocationPermission(this)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this);
-            }
-        } catch (Exception e) {
-            CarLog.e(TAG, "Error initializing GPS", e);
-        }
 
         checkSmartReset();
     }
@@ -241,49 +225,39 @@ public class TripService extends Service implements LocationListener, CarTelemet
 
     /**
      * Écoute les changements d'état du contact de la voiture.
-     * Filtre les doublons d'événements et initialise le chronomètre monotone.
+     * Filtre les doublons d'événements et initialise le chronomètre monotone. Rejouée sur
+     * {@link #mainHandler} : tout le reste de l'état mutable de ce service n'est touché que
+     * depuis le thread principal (voir {@link #onOdometerChanged}).
      *
-     * @param accOn true si le contact est mis, false sinon.
+     * @param contactOn true si le contact est mis, false sinon.
      */
-    @Override
-    public void onAccStateChanged(boolean accOn) {
-        // Protection contre les déclenchements en double
-        if (this.isAccOn == accOn) {
-            return;
-        }
-        this.isAccOn = accOn;
+    private void onContactOnChanged(Boolean contactOn) {
+        mainHandler.post(() -> {
+            // Protection contre les déclenchements en double
+            if (this.isAccOn == contactOn) {
+                return;
+            }
+            this.isAccOn = contactOn;
 
-        long wallTimeNow = System.currentTimeMillis();
-        long monotonicNow = SystemClock.elapsedRealtime();
+            long wallTimeNow = System.currentTimeMillis();
+            long monotonicNow = SystemClock.elapsedRealtime();
 
-        if (accOn) {
-            checkSmartReset();
-            lastTickTime = monotonicNow;
+            if (contactOn) {
+                checkSmartReset();
+                lastTickTime = monotonicNow;
 
-            CarLog.i(TAG, "Ignition on (ACC_ON) trip start");
-        } else {
-            accumulateElapsedTime(monotonicNow);
-            lastTickTime = 0;
+                CarLog.i(TAG, "Ignition on (contact) trip start");
+            } else {
+                accumulateElapsedTime(monotonicNow);
+                lastTickTime = 0;
 
-            prefs.edit().putLong(PerfsKey.TripService.getLastAccOff(), wallTimeNow).commit();
+                prefs.edit().putLong(PerfsKey.TripService.getLastAccOff(), wallTimeNow).commit();
 
-            CarLog.i(TAG, "Ignition off (ACC_OFF) trip end");
-        }
+                CarLog.i(TAG, "Ignition off (contact) trip end");
+            }
 
-        notifyTripUpdated();
-    }
-
-    /**
-     * Met en cache la vitesse courante, utilisée uniquement en interne pour filtrer les mises à jour
-     * GPS (voir {@link #onLocationChanged}) : ce n'est pas une information de trajet, elle n'est
-     * donc pas relayée aux {@link TripListener}.
-     *
-     * @param speed La vitesse actuelle du véhicule en km/h.
-     * @param rpm   Le régime moteur actuel, non utilisé par ce service.
-     */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        this.currentSpeedKmH = speed;
+            notifyTripUpdated();
+        });
     }
 
     /**
@@ -342,45 +316,46 @@ public class TripService extends Service implements LocationListener, CarTelemet
     }
 
     /**
-     * Calcule le temps et la distance parcourue à chaque mise à jour GPS. Les abonnés ne sont
-     * notifiés que si l'une de ces deux valeurs a effectivement changé, pas à chaque position GPS
-     * reçue (le GPS remonte une position par seconde environ, y compris à l'arrêt).
+     * Calcule le temps et la distance parcourue à chaque mise à jour de l'odomètre (trame CAN
+     * 0F6, résolution du kilomètre entier). Sert aussi de tick périodique pour
+     * {@link #accumulateElapsedTime}. Les abonnés ne sont notifiés que si l'une de ces deux
+     * valeurs a effectivement changé.
+     * <p>
+     * La toute première valeur reçue (après {@link #lastOdometerKm} = -1) amorce simplement le
+     * repère, sans compter de distance — sinon le kilométrage total du véhicule serait ajouté
+     * d'un coup au trajet du jour. Un écart négatif (odomètre remis à zéro) est ignoré plutôt que
+     * soustrait, mais {@link #lastOdometerKm} est quand même resynchronisé sur la nouvelle valeur.
+     * </p>
      *
-     * @param location L'objet Location contenant les nouvelles coordonnées.
+     * @param odometerKm Le kilométrage total courant du véhicule, en kilomètres.
      */
-    @Override
-    public void onLocationChanged(@NonNull Location location) {
-        try {
-            long monotonicNow = SystemClock.elapsedRealtime();
-            boolean changed = false;
+    private void onOdometerChanged(Long odometerKm) {
+        mainHandler.post(() -> {
+            try {
+                boolean changed = false;
 
-            // Mise à jour du temps de trajet (par minutes entières) en roulant, via le chronomètre matériel
-            if (isAccOn) {
-                changed |= accumulateElapsedTime(monotonicNow);
-            }
-
-            // Filtrage des positions GPS considérées comme trop imprécises
-            if (!location.hasAccuracy() || location.getAccuracy() > MAX_ACCURACY_M) return;
-
-            // Calcul et accumulation de la distance validée
-            if (lastLocation != null) {
-                float distance = lastLocation.distanceTo(location);
-
-                if (currentSpeedKmH >= MIN_SPEED_KMH && distance > MIN_DISTANCE_M) {
-                    changed |= dailyTrip.accumulateDistance(distance);
-                    changed |= fullDailyTrip.accumulateDistance(distance);
-                    lastLocation = location;
+                // Mise à jour du temps de trajet (par minutes entières) en roulant, via le chronomètre matériel
+                if (isAccOn) {
+                    changed |= accumulateElapsedTime(SystemClock.elapsedRealtime());
                 }
-            } else {
-                lastLocation = location;
-            }
 
-            if (changed) {
-                notifyTripUpdated();
+                if (isAccOn && lastOdometerKm >= 0) {
+                    long deltaKm = odometerKm - lastOdometerKm;
+                    if (deltaKm > 0) {
+                        float deltaMeters = deltaKm * 1000f;
+                        changed |= dailyTrip.accumulateDistance(deltaMeters);
+                        changed |= fullDailyTrip.accumulateDistance(deltaMeters);
+                    }
+                }
+                lastOdometerKm = odometerKm;
+
+                if (changed) {
+                    notifyTripUpdated();
+                }
+            } catch (Exception e) {
+                CarLog.e(TAG, "Error calculating trip", e);
             }
-        } catch (Exception e) {
-            CarLog.e(TAG, "Error calculating trip", e);
-        }
+        });
     }
 
     /**
@@ -394,8 +369,7 @@ public class TripService extends Service implements LocationListener, CarTelemet
     }
 
     /**
-     * Libère les ressources à l'arrêt du service : désabonnement du service de télémétrie
-     * et arrêt des mises à jour GPS.
+     * Libère les ressources à l'arrêt du service : désabonnement du service de télémétrie.
      */
     @Override
     public void onDestroy() {
@@ -403,14 +377,11 @@ public class TripService extends Service implements LocationListener, CarTelemet
         try {
             if (isBound) {
                 if (telemetryService != null) {
-                    telemetryService.removeListener(this);
+                    telemetryService.getData().contactOn.unbind(contactOnObserver);
+                    telemetryService.getData().odometer.unbind(odometerObserver);
                 }
                 unbindService(serviceConnection);
                 isBound = false;
-            }
-
-            if (locationManager != null) {
-                locationManager.removeUpdates(this);
             }
         } catch (Exception e) {
             CarLog.e(TAG, "Erreur nettoyage onDestroy", e);
@@ -426,26 +397,5 @@ public class TripService extends Service implements LocationListener, CarTelemet
     @Override
     public IBinder onBind(Intent intent) {
         return binder;
-    }
-
-    /**
-     * Non utilisé : le statut du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
-     */
-    @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {
-    }
-
-    /**
-     * Non utilisé : l'activation du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
-     */
-    @Override
-    public void onProviderEnabled(@NonNull String provider) {
-    }
-
-    /**
-     * Non utilisé : la désactivation du fournisseur GPS n'a pas d'impact sur le calcul du trajet.
-     */
-    @Override
-    public void onProviderDisabled(@NonNull String provider) {
     }
 }

@@ -16,6 +16,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (lecture série de l'adaptateur Canable)
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

@@ -2,8 +2,7 @@ package com.rguilbeau.carlauncher.service.trip;
 
 /**
  * Interface de communication permettant aux composants liés d'interagir avec {@link TripService}
- * (patron de conception Observateur, à l'image de
- * {@link com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener}).
+ * (patron de conception Observateur).
  */
 public interface TripListener {
 

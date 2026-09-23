@@ -120,6 +120,22 @@ public class PerfsKey {
     }
 
     /**
+     * Clés des préférences trouvées dans ReaderSimulatorPeugeot407 (fichier "CarLauncherPrefs").
+     */
+    public static class ReaderSimulatorPeugeot407 {
+
+        private static final String PREFIX = "reader_simulator_peugeot_407_";
+
+        /**
+         * Clé du kilométrage simulé (en km), persisté comme le serait un vrai odomètre : ne
+         * repart jamais de zéro entre deux démarrages du simulateur ou de l'app.
+         */
+        public static String getOdometerKm() {
+            return PREFIX + "odometerKm";
+        }
+    }
+
+    /**
      * Clés des préférences trouvées dans CardWeather (fichier "CarLauncherPrefs").
      */
     public static class CardWeather {

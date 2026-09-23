@@ -16,13 +16,13 @@
 ```mermaid
 graph TD
     subgraph SOURCING ["1. Entrées & Capteurs"]
-        CAN["Information véhicule<br/>(Broadcast com.qf.action.xx)"]
+        CAN["Bus CAN Confort<br/>(Adaptateur CANable USB / Simulateur en dev)"]
         GPS["Position GPS<br/>(API Android Location)"]
         ANDROID["Notifications Android<br/>(Média & Maps)"]
     end
 
     subgraph SERVICES ["2. Services d'Arrière-Plan"]
-        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact)"]
+        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact, Kilométrage)"]
         SERVICE_TRIP["Service Trajet<br/>(Distance, Chrono)"]
         SERVICE_NOTIF["Service Notification<br/>(Musique, Navigation Maps)"]
     end
@@ -95,11 +95,11 @@ Ces fichiers servent de base de référence pour le *reverse-engineering* du sys
 
 **Applications et frameworks (pour décompilation) :**
 * `framework.apk` : Le cœur du système Android modifié par le constructeur. Utile pour analyser les comportements non standards (comme les restrictions du gestionnaire de fenêtres).
-* `com.qf.vehicule.apk` : Gère la communication directe avec le boîtier CANbus (permet de retrouver les actions pour la vitesse, le régime moteur, le contact).
+* `com.qf.vehicule.apk` : Gère la communication du constructeur avec le boîtier CANbus. La télémétrie du Launcher ne dépend plus de cet APK (voir [Télémétrie (Bus CAN)](#télémétrie-bus-can) : lecture directe du bus via un adaptateur CANable) ; il reste une référence utile pour identifier d'autres trames/IDs du bus Confort.
 * `com.qf.carsettings.apk` : Application des paramètres natifs du véhicule.
 * `com.qf.commonfunc.apk` : Regroupe les fonctions communes et les services en arrière-plan du constructeur (gestion des commandes au volant, radio, etc.).
 
-> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés, indispensables pour intégrer la télémétrie dans le Launcher.
+> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés (notifications média/navigation, commandes au volant...).
 
 ## Base de données
 
@@ -216,13 +216,11 @@ L'installation de cette application ne se fait pas de manière classique. Elle d
 
 ### priv-app
 
-Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour trois raisons majeures :
+Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour deux raisons majeures :
 
-1. **Lecture des données de la voiture (Télémétrie) :**
-   Pour recevoir la vitesse, le régime moteur (RPM) et les signaux de contact (ACC ON/OFF), l'application doit s'abonner aux flux du boîtier CANbus. Cela nécessite de modifier des paramètres restreints d'Android (`Settings.Global`) via la permission critique `WRITE_SECURE_SETTINGS`. Une application `priv-app` obtient cette permission automatiquement sans blocage de sécurité.
-2. **Immunité contre la fermeture (Task Killer) :**
-   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, notre service de chronomètre devient intouchable. Il tournera toujours en tâche de fond pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
-3. **Mises à jour (Self-Update) :**
+1. **Immunité contre la fermeture (Task Killer) :**
+   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, nos services (télémétrie, chronomètre de trajet...) deviennent intouchables. Ils tournent toujours en tâche de fond, y compris pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
+2. **Mises à jour (Self-Update) :**
    Ce statut octroie la permission `INSTALL_PACKAGES`, permettant à l'application de télécharger ses propres mises à jour depuis GitHub et de les installer en arrière-plan, sans aucune intervention de l'utilisateur à l'écran.
 
 ### Permissions système
@@ -324,24 +322,48 @@ Pour s'assurer que l'installation en `priv-app` a fonctionné :
 - S'il est **grisé, absent, ou remplacé par "Désactiver"** : L'installation a réussi, l'application fait désormais partie intégrante du système d'usine.
 - S'il est cliquable normalement (et permet de supprimer l'application) : L'installation a échoué, l'application est installée de manière classique. Vérifier les logs du script `install.bat` pour identifier le blocage lors de la copie.
 
-## Simulation et Tests ADB (Télémétrie & Veille)
+## Télémétrie (Bus CAN)
 
-Il est possible de simuler les signaux du véhicule (CANbus/MCU QF01) via **ADB** afin de tester le fonctionnement du `CarTelemetryService` et du `TripService` sur émulateur sans être raccordé au véhicule.
+La télémétrie (vitesse, régime moteur, contact, kilométrage) est lue directement sur le bus CAN **Confort** (125 kbps) du véhicule, exposée par `TelemetryService` (`service/telemetry/`) sous forme de `Property<T>` observables regroupées dans `VehicleData` :
 
-* **Activer le contact (ACC ON) :**
-
-```bash
-adb shell am broadcast -a com.qf.action.ACC_ON
+```java
+VehicleData data = telemetryService.getData();
+data.rpm.bind(this::onRpmChanged);
+data.speed.bind(this::onSpeedChanged);
 ```
 
-* **Désactiver le contact (ACC OFF) :**
+### Architecture
+
+* `CanBus` résout, au démarrage, les décodeurs de trames (`Frame`) disponibles pour le véhicule ciblé (`FrameResolver`, registre statique indexé par `Vehicle`), puis démarre un `CanReader`.
+* Chaque `Frame` (ex: `Frame0B6`, `Frame0F6` pour la Peugeot 407) décode les octets d'une trame CAN précise et met à jour `VehicleData` — un seul point de vérité, partagé par toute l'app.
+* `CanReader` a deux implémentations, choisies par `TelemetryService` selon `DeviceEnvironment.isProd()` :
+  * **`CanableReader`** (production) : lit un adaptateur [CANable](https://canable.io) branché en USB via `usb-serial-for-android` (protocole SLCAN, écoute seule/Listen-Only à 125 kbps). Gère la demande de permission USB ainsi que la reconnexion automatique (branchement/débranchement détectés en temps réel, nouvel essai après une erreur de lecture).
+  * **`ReaderSimulatorPeugeot407`** (dev/test — actif par défaut sur tout device non marqué prod) : génère de fausses trames CAN 0B6/0F6, avec le même encodage que les trames réelles, et les fait décoder par les vrais `Frame` : toute la chaîne est exercée sans adaptateur ni véhicule branché. Le kilométrage simulé, lui, est persisté (SharedPreferences) comme un vrai odomètre — il ne repart jamais de zéro entre deux lancements de l'app.
+
+### Simulation et tests ADB
+
+Tant qu'aucune routine n'est déclenchée, le simulateur reste inerte (contact coupé, régime et vitesse à zéro — l'odomètre, lui, garde sa dernière valeur persistée). Il est entièrement piloté par broadcast, pour tester sans recompiler l'app :
+
+* **Démarrer un trajet type** (ralenti → accélération → croisière → décélération → ralenti, avec la chute de régime caractéristique à chaque changement de rapport simulé) :
 
 ```bash
-adb shell am broadcast -a com.qf.action.ACC_OFF
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.START_ROUTINE_1 --ef cruise_speed_kmh 130 --ez loop true
 ```
+*(les deux extras sont optionnels : `cruise_speed_kmh` défaut 110, `loop` défaut true — l'odomètre continue depuis sa valeur courante, voir `SET_ODOMETER` ci-dessous pour le repositionner)*
 
-* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2200 RPM) :**
+* **Arrêter le trajet en cours :**
 
 ```bash
-adb shell am broadcast -a com.qf.vehicle.action.DATA_SHARE --ei speed 60 --ei rpm 2200
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.STOP_ROUTINE
 ```
+
+* **Forcer une valeur précise** (écrasée au tick suivant si un trajet est actif) :
+
+```bash
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_RPM --ei value 3000
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_SPEED --ef value 90
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_CONTACT_ON --ez value true
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ODOMETER --el value 87450
+```
+
+> **Note :** ce canal de contrôle n'existe que lorsque `ReaderSimulatorPeugeot407` est instancié (jamais en production, voir `DeviceEnvironment.isProd()` ci-dessus) — son receiver est donc volontairement exporté (atteignable par `adb`), sans risque hors d'un device de dev/test.

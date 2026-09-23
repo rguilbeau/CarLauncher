@@ -11,14 +11,14 @@ import android.os.Looper;
 
 import com.rguilbeau.carlauncher.repository.TripDailyRepository;
 import com.rguilbeau.carlauncher.repository.dto.DailyTrip;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.service.telemetry.TelemetryService;
 import com.rguilbeau.carlauncher.service.trip.TripListener;
 import com.rguilbeau.carlauncher.service.trip.TripService;
 import com.rguilbeau.carlauncher.service.trip.TripStats;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Service d'arrière-plan chargé de persister les statistiques de trajet en base de données.
@@ -26,13 +26,13 @@ import java.util.concurrent.TimeUnit;
  * Enregistre les statistiques "full" (jamais affectées par un reset manuel de l'utilisateur) via
  * {@link TripDailyRepository}, selon trois déclencheurs complémentaires : une sauvegarde immédiate
  * à l'arrêt du véhicule (front descendant vers 0 km/h) puis à chaque mise à jour des statistiques
- * tant qu'il reste à l'arrêt (voir {@link #onTelemetryUpdated} et {@link #onTripUpdated}), un
+ * tant qu'il reste à l'arrêt (voir {@link #onSpeedChanged} et {@link #onTripUpdated}), un
  * flush immédiat à la coupure du contact, et une sauvegarde périodique toutes les minutes tant que
  * le véhicule est en mouvement (voir {@link #periodicSave}) — filet de sécurité couvrant les longs
  * trajets sans arrêt.
  * </p>
  */
-public class TripPersistenceService extends Service implements CarTelemetryListener, TripListener {
+public class TripPersistenceService extends Service implements TripListener {
 
     /**
      * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
@@ -50,9 +50,9 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
     private TripService tripService;
 
     /**
-     * Référence ves le service diffusant les informations du véhicule (ACC_ON/OFF, speed...)
+     * Référence ves le service diffusant les informations du véhicule (contact, vitesse...)
      */
-    private CarTelemetryService telemetryService;
+    private TelemetryService telemetryService;
 
     /**
      * Indicateur d'état précisant si le service trip est actuellement attaché au service de trajet.
@@ -63,6 +63,15 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
      * Indicateur d'état précisant si le service telemetry est actuellement attaché au service de trajet.
      */
     private boolean isTelemetryServiceBound = false;
+
+    /**
+     * Instances stables des observateurs, conservées pour pouvoir se désabonner via
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind} (une
+     * référence de méthode réévaluée à chaque appel ne le permettrait pas, voir sa doc). Rejoués
+     * sur {@link #handler} (thread principal), déjà utilisé par {@link #periodicSave}.
+     */
+    private final Consumer<Double> speedObserver = this::onSpeedChanged;
+    private final Consumer<Boolean> contactOnObserver = this::onContactOnChanged;
 
 
     /**
@@ -132,10 +141,11 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
          */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
+            TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            telemetryService.addListener(TripPersistenceService.this);
-            CarLog.d(TAG, "TripPersistenceService connected to CarTelemetryService.");
+            telemetryService.getData().speed.bind(speedObserver);
+            telemetryService.getData().contactOn.bind(contactOnObserver);
+            CarLog.d(TAG, "TripPersistenceService connected to TelemetryService.");
         }
 
         /**
@@ -157,7 +167,7 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
         Intent intentTripService = new Intent(this, TripService.class);
         isTripServiceBound = bindService(intentTripService, tripServiceConnection, Context.BIND_AUTO_CREATE);
 
-        Intent intentTelemetryService = new Intent(this, CarTelemetryService.class);
+        Intent intentTelemetryService = new Intent(this, TelemetryService.class);
         isTelemetryServiceBound = bindService(intentTelemetryService, telemetryServiceConnection, Context.BIND_AUTO_CREATE);
 
         handler.postDelayed(periodicSave, SAVE_INTERVAL_MS);
@@ -167,22 +177,24 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
      * Met à jour l'état de conduite ({@link #carIsDriving}) à partir de la vitesse télémétrique, et
      * déclenche une sauvegarde immédiate dès l'arrêt du véhicule (front descendant vers 0 km/h) —
      * dès lors, la sauvegarde périodique ({@link #periodicSave}) s'interrompt au profit de la
-     * sauvegarde en temps réel faite par {@link #onTripUpdated}.
+     * sauvegarde en temps réel faite par {@link #onTripUpdated}. Rejouée sur {@link #handler}.
      *
      * @param speed La vitesse actuelle du véhicule en km/h.
-     * @param rpm   Le régime moteur actuel, non utilisé ici.
      */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
-        if (speed == 0 && lastSpeedKmH != 0) {
-            // Front descendant : le véhicule vient de s'arrêter
-            carIsDriving = false;
-            persistCurrentStats();
-        } else if (speed != 0) {
-            carIsDriving = true;
-        }
+    private void onSpeedChanged(Double speed) {
+        handler.post(() -> {
+            int speedKmH = (int) Math.round(speed);
 
-        lastSpeedKmH = speed;
+            if (speedKmH == 0 && lastSpeedKmH != 0) {
+                // Front descendant : le véhicule vient de s'arrêter
+                carIsDriving = false;
+                persistCurrentStats();
+            } else if (speedKmH != 0) {
+                carIsDriving = true;
+            }
+
+            lastSpeedKmH = speedKmH;
+        });
     }
 
     /**
@@ -202,15 +214,16 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
 
     /**
      * Effectue un flush immédiat des statistiques à la coupure du contact, afin de ne perdre aucune
-     * donnée avant une éventuelle remise à zéro du jour suivant.
+     * donnée avant une éventuelle remise à zéro du jour suivant. Rejouée sur {@link #handler}.
      *
-     * @param accOn true si le contact est mis, false s'il est coupé.
+     * @param contactOn true si le contact est mis, false s'il est coupé.
      */
-    @Override
-    public void onAccStateChanged(boolean accOn) {
-        if (!accOn) {
-            persistCurrentStats();
-        }
+    private void onContactOnChanged(Boolean contactOn) {
+        handler.post(() -> {
+            if (!contactOn) {
+                persistCurrentStats();
+            }
+        });
     }
 
     /**
@@ -276,7 +289,8 @@ public class TripPersistenceService extends Service implements CarTelemetryListe
 
             if (isTelemetryServiceBound) {
                 if (telemetryService != null) {
-                    telemetryService.removeListener(this);
+                    telemetryService.getData().speed.unbind(speedObserver);
+                    telemetryService.getData().contactOn.unbind(contactOnObserver);
                 }
                 unbindService(telemetryServiceConnection);
                 isTelemetryServiceBound = false;

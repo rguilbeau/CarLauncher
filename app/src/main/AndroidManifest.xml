@@ -25,6 +25,9 @@
     <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.STATUS_BAR" tools:ignore="ProtectedPermissions" />
 
+    <!-- Adaptateur CANable branché en USB (lecture du bus CAN du véhicule) -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
     <application
         android:name=".CarLauncherApp"
         android:allowBackup="true"
@@ -85,9 +88,9 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Service d'arrière-plan communiquant avec le bus CAN du véhicule pour la vitesse, les RPM et le contact (ACC) -->
+        <!-- Service d'arrière-plan lisant le bus CAN du véhicule via un adaptateur Canable (vitesse, RPM, contact, kilométrage) -->
         <service
-            android:name=".service.telemetry.CarTelemetryService"
+            android:name=".service.telemetry.TelemetryService"
             android:enabled="true"
             android:exported="false" />
 

@@ -16,22 +16,23 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryListener;
-import com.rguilbeau.carlauncher.service.telemetry.CarTelemetryService;
+import com.rguilbeau.carlauncher.service.telemetry.TelemetryService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
+
+import java.util.function.Consumer;
 
 /**
  * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
  * <p>
  * Ce composant affiche la vitesse instantanée du véhicule en km/h ainsi que le régime moteur (RPM).
- * Il s'abonne de manière autonome au {@link CarTelemetryService} pour lire les
+ * Il s'abonne de manière autonome au {@link TelemetryService} pour lire les
  * trames CANbus en temps réel lorsque la vue est affichée.
  * </p>
  *
  * @author rguilbeau
- * @version 2.0 (CANbus)
+ * @version 3.0 (CANbus)
  */
-public class CardSpeed extends FrameLayout implements CarTelemetryListener {
+public class CardSpeed extends FrameLayout {
 
     /**
      * Tag d'identification utilisé pour les journaux d'erreurs et de débogage (Logcat).
@@ -51,12 +52,20 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     /**
      * Référence vers le service de télémétrie de la voiture.
      */
-    private CarTelemetryService telemetryService;
+    private TelemetryService telemetryService;
 
     /**
      * Indicateur d'état précisant si la vue est actuellement connectée (bind) au service de télémétrie.
      */
     private boolean isBound = false;
+
+    /**
+     * Instances stables des observateurs, conservées pour pouvoir se désabonner via
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind} (une
+     * référence de méthode réévaluée à chaque appel ne le permettrait pas, voir sa doc).
+     */
+    private final Consumer<Double> speedObserver = this::onSpeedChanged;
+    private final Consumer<Integer> rpmObserver = this::onRpmChanged;
 
     /**
      * Gestionnaire de connexion entre la vue et le service de télémétrie.
@@ -67,11 +76,12 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
          */
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            CarTelemetryService.LocalBinder binder = (CarTelemetryService.LocalBinder) service;
+            TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            telemetryService.addListener(CardSpeed.this);
+            telemetryService.getData().speed.bind(speedObserver);
+            telemetryService.getData().rpm.bind(rpmObserver);
             isBound = true;
-            CarLog.d(TAG, "Connected to CarTelemetryService");
+            CarLog.d(TAG, "Connected to TelemetryService");
         }
 
         /**
@@ -81,7 +91,7 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
         public void onServiceDisconnected(ComponentName name) {
             isBound = false;
             telemetryService = null;
-            CarLog.d(TAG, "Disconnected from CarTelemetryService");
+            CarLog.d(TAG, "Disconnected from TelemetryService");
         }
     };
 
@@ -99,11 +109,6 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
 
         txtSpeed = findViewById(R.id.txtSpeed);
         progressRpm = findViewById(R.id.progressRpm);
-
-        if (isBound) {
-            txtSpeed.setText(String.valueOf(telemetryService.getCurrentSpeed()));
-            progressRpm.setProgress(Math.min(telemetryService.getCurrentRpm(), 6500), true);
-        }
     }
 
     /**
@@ -114,10 +119,10 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         try {
-            Intent intent = new Intent(getContext(), CarTelemetryService.class);
+            Intent intent = new Intent(getContext(), TelemetryService.class);
             getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
         } catch (Exception e) {
-            CarLog.e(TAG, "Error binding to CarTelemetryService", e);
+            CarLog.e(TAG, "Error binding to TelemetryService", e);
         }
     }
 
@@ -134,7 +139,8 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
         try {
             if (isBound) {
                 if (telemetryService != null) {
-                    telemetryService.removeListener(this);
+                    telemetryService.getData().speed.unbind(speedObserver);
+                    telemetryService.getData().rpm.unbind(rpmObserver);
                 }
                 getContext().unbindService(serviceConnection);
                 isBound = false;
@@ -145,18 +151,29 @@ public class CardSpeed extends FrameLayout implements CarTelemetryListener {
     }
 
     /**
-     * Reçoit les nouvelles valeurs de télémétrie et met à jour l'affichage sur le thread principal.
+     * Reçoit la nouvelle vitesse et met à jour l'affichage sur le thread principal (voir la doc de
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property} pour le thread
+     * d'appel de cet observateur).
      *
      * @param speed La vitesse instantanée du véhicule en km/h.
-     * @param rpm   Le régime moteur en tr/min.
      */
-    @Override
-    public void onTelemetryUpdated(int speed, int rpm) {
+    private void onSpeedChanged(Double speed) {
         post(() -> {
             if (txtSpeed != null) {
-                txtSpeed.setText(String.valueOf(speed));
+                txtSpeed.setText(String.valueOf(Math.round(speed)));
             }
+        });
+    }
 
+    /**
+     * Reçoit le nouveau régime moteur et met à jour l'affichage sur le thread principal (voir la
+     * doc de {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property} pour le
+     * thread d'appel de cet observateur).
+     *
+     * @param rpm Le régime moteur en tr/min.
+     */
+    private void onRpmChanged(Integer rpm) {
+        post(() -> {
             if (progressRpm != null) {
                 progressRpm.setProgress(Math.min(rpm, 6500), true);
             }
