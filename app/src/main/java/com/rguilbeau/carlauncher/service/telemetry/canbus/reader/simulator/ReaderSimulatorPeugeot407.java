@@ -61,11 +61,19 @@ import java.util.function.Consumer;
  * # Arrêter la routine active
  * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.STOP_ROUTINE
  *
- * # Forcer une valeur de VehicleData directement (sans passer par une trame/un décodeur ; écrasé
- * # au tick suivant si une routine est active)
+ * # Forcer le régime, la vitesse ou le contact (émet une vraie trame 0B6/0F6 décodée par
+ * # Frame0B6/Frame0F6, qui recalculent aussi engineOn ; écrasé au tick suivant si une routine est
+ * # active)
  * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_RPM --ei value 3000
  * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_SPEED --ef value 90
  * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_CONTACT_ON --ez value true
+ *
+ * # Démarrer (contact mis + régime de ralenti si le moteur ne tournait pas) ou couper le moteur
+ * # (régime à 0, contact laissé mis) via les mêmes trames 0F6/0B6
+ * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ENGINE_ON --ez value true
+ *
+ * # Forcer l'odomètre directement dans VehicleData (sans passer par une trame/un décodeur ;
+ * # écrasé au tick suivant si une routine est active)
  * adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ODOMETER --ef value 87450.3
  *
  * # Forcer la température extérieure (°C) ; conservée même si une routine est active
@@ -94,6 +102,7 @@ public class ReaderSimulatorPeugeot407 implements CanReader {
     private static final String ACTION_SET_RPM = "com.rguilbeau.carlauncher.debug.simulator.SET_RPM";
     private static final String ACTION_SET_SPEED = "com.rguilbeau.carlauncher.debug.simulator.SET_SPEED";
     private static final String ACTION_SET_CONTACT_ON = "com.rguilbeau.carlauncher.debug.simulator.SET_CONTACT_ON";
+    private static final String ACTION_SET_ENGINE_ON = "com.rguilbeau.carlauncher.debug.simulator.SET_ENGINE_ON";
     private static final String ACTION_SET_ODOMETER = "com.rguilbeau.carlauncher.debug.simulator.SET_ODOMETER";
     private static final String ACTION_SET_OUTSIDE_TEMPERATURE = "com.rguilbeau.carlauncher.debug.simulator.SET_OUTSIDE_TEMPERATURE";
     private static final String ACTION_SHOW_POPUP_MESSAGE = "com.rguilbeau.carlauncher.debug.simulator.SHOW_POPUP_MESSAGE";
@@ -259,6 +268,7 @@ public class ReaderSimulatorPeugeot407 implements CanReader {
         filter.addAction(ACTION_SET_RPM);
         filter.addAction(ACTION_SET_SPEED);
         filter.addAction(ACTION_SET_CONTACT_ON);
+        filter.addAction(ACTION_SET_ENGINE_ON);
         filter.addAction(ACTION_SET_ODOMETER);
         filter.addAction(ACTION_SET_OUTSIDE_TEMPERATURE);
         filter.addAction(ACTION_SHOW_POPUP_MESSAGE);
@@ -274,10 +284,13 @@ public class ReaderSimulatorPeugeot407 implements CanReader {
 
     /**
      * Route chaque action de contrôle à distance vers la routine ou le champ de
-     * {@link VehicleData} concerné. Les {@code ACTION_SET_*} écrivent directement dans les
-     * {@code Property} correspondantes, sans passer par un {@link Frame} : elles sont donc
-     * écrasées au prochain tick si une routine est active (voir la doc de classe), sauf
-     * {@link #ACTION_SET_OUTSIDE_TEMPERATURE}, que les routines réémettent telle quelle.
+     * {@link VehicleData} concerné. {@link #ACTION_SET_RPM}, {@link #ACTION_SET_SPEED},
+     * {@link #ACTION_SET_CONTACT_ON} et {@link #ACTION_SET_ENGINE_ON} émettent une vraie trame (comme les routines, et sur le même
+     * thread {@link #executor}, pour que les trames restent décodées une à une comme avec le
+     * lecteur réel) ; les autres {@code ACTION_SET_*} écrivent directement dans les
+     * {@code Property} correspondantes. Toutes sont écrasées au prochain tick si une routine est
+     * active (voir la doc de classe), sauf {@link #ACTION_SET_OUTSIDE_TEMPERATURE}, que les
+     * routines réémettent telle quelle.
      */
     private final BroadcastReceiver debugControlReceiver = new BroadcastReceiver() {
         @Override
@@ -296,17 +309,32 @@ public class ReaderSimulatorPeugeot407 implements CanReader {
                     stopRoutine();
                     break;
 
-                case ACTION_SET_RPM:
-                    data.rpm.set(intent.getIntExtra(EXTRA_VALUE, data.rpm.get().orElse(0)));
+                case ACTION_SET_RPM: {
+                    int rpm = intent.getIntExtra(EXTRA_VALUE, data.rpm.get().orElse(0));
+                    executor.execute(() -> emitRpmSpeed(rpm, data.speed.get().orElse(0)));
                     break;
+                }
 
-                case ACTION_SET_SPEED:
-                    data.speed.set((int) intent.getFloatExtra(EXTRA_VALUE, data.speed.get().orElse(0)));
+                case ACTION_SET_SPEED: {
+                    float speed = intent.getFloatExtra(EXTRA_VALUE, data.speed.get().orElse(0));
+                    executor.execute(() -> emitRpmSpeed(data.rpm.get().orElse(0), speed));
                     break;
+                }
 
-                case ACTION_SET_CONTACT_ON:
-                    data.contactOn.set(intent.getBooleanExtra(EXTRA_VALUE, data.contactOn.get().orElse(false)));
+                case ACTION_SET_CONTACT_ON: {
+                    boolean contactOn = intent.getBooleanExtra(EXTRA_VALUE, data.contactOn.get().orElse(false));
+                    executor.execute(() -> emitContactOdometerTemperature(
+                            contactOn,
+                            data.odometer.get().orElse(0.0),
+                            data.outsideTemperature.get().orElse(DEFAULT_OUTSIDE_TEMPERATURE_C)));
                     break;
+                }
+
+                case ACTION_SET_ENGINE_ON: {
+                    boolean engineOn = intent.getBooleanExtra(EXTRA_VALUE, data.engineOn.get().orElse(false));
+                    executor.execute(() -> setEngineOn(engineOn));
+                    break;
+                }
 
                 case ACTION_SET_ODOMETER:
                     // Arrondi au dixième, résolution réelle de l'odomètre (et du float de l'extra)
@@ -331,6 +359,32 @@ public class ReaderSimulatorPeugeot407 implements CanReader {
             }
         }
     };
+
+    /**
+     * Démarre ou coupe le moteur simulé en émettant les trames correspondantes, pour que
+     * {@code engineOn} soit déduit par {@link Frame0B6}/{@link Frame0F6} comme sur le véhicule :
+     * <ul>
+     *     <li>démarrage : contact mis (trame 0F6), puis régime de ralenti {@value #IDLE_RPM}
+     *     tr/min (trame 0B6) si le moteur ne tournait pas déjà ;</li>
+     *     <li>arrêt : régime à 0 (trame 0B6), le contact restant mis.</li>
+     * </ul>
+     * La vitesse courante est conservée. Exécutée sur {@link #executor}.
+     */
+    private void setEngineOn(boolean engineOn) {
+        int speed = data.speed.get().orElse(0);
+
+        if (engineOn) {
+            emitContactOdometerTemperature(
+                    true,
+                    data.odometer.get().orElse(0.0),
+                    data.outsideTemperature.get().orElse(DEFAULT_OUTSIDE_TEMPERATURE_C));
+
+            int rpm = data.rpm.get().orElse(0);
+            emitRpmSpeed(rpm > 0 ? rpm : IDLE_RPM, speed);
+        } else {
+            emitRpmSpeed(0, speed);
+        }
+    }
 
     /**
      * Émet une trame {@value #FRAME_ID_POPUP_MESSAGE} demandant l'affichage du message

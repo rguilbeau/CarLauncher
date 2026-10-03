@@ -363,6 +363,7 @@ adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.STOP_ROUTINE
 adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_RPM --ei value 3000
 adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_SPEED --ef value 90
 adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_CONTACT_ON --ez value true
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ENGINE_ON --ez value true
 adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ODOMETER --el value 87450
 adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_OUTSIDE_TEMPERATURE --ei value 5
 ```

@@ -39,6 +39,9 @@ public class Frame0F6 implements Frame {
 
         // Assigne la valeur à la propriété correspondante dans VehicleData
         vehicleData.contactOn.set(contactOn);
+        // Moteur en route : contact mis et régime (dernière valeur reçue de la trame 0B6) non nul.
+        // Recalculé ici aussi car la trame 0B6 peut cesser d'être émise une fois le contact coupé.
+        vehicleData.engineOn.set(contactOn && vehicleData.rpm.get().orElse(0) > 0);
         vehicleData.odometer.set(odometer);
         vehicleData.outsideTemperature.set(temperature);
     }

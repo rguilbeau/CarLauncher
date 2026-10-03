@@ -21,6 +21,12 @@ public class VehicleData {
     /** État du contact (allumage) du véhicule : {@code true} si mis. */
     public final Property<Boolean> contactOn = new Property<>(false);
 
+    /**
+     * État du moteur : {@code true} s'il tourne, c'est-à-dire contact mis et régime supérieur à 0.
+     * Mis à jour par les décodeurs des trames portant {@link #rpm} et {@link #contactOn}.
+     */
+    public final Property<Boolean> engineOn = new Property<>(false);
+
     /** Kilométrage total du véhicule, en kilomètres (résolution 0,1 km). */
     public final Property<Double> odometer = new Property<>();
 

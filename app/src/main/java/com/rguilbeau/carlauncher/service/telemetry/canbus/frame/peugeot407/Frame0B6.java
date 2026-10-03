@@ -28,5 +28,7 @@ public class Frame0B6 implements Frame {
 
         vehicleData.rpm.set(rpm);
         vehicleData.speed.set(speed);
+        // Moteur en route : contact (dernière valeur reçue de la trame 0F6) mis et régime non nul
+        vehicleData.engineOn.set(vehicleData.contactOn.get().orElse(false) && rpm > 0);
     }
 }

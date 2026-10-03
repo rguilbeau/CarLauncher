@@ -26,12 +26,17 @@ import java.util.function.Consumer;
 /**
  * Service d'arrière-plan gérant l'enregistrement des statistiques de trajet.
  * <p>
- * S'abonne au {@link TelemetryService} pour l'état du contact (durée de conduite) et le
+ * S'abonne au {@link TelemetryService} pour l'état du moteur (durée de conduite) et le
  * kilométrage (distance parcourue, voir {@link #onOdometerChanged}). Le temps de conduite est
  * comptabilisé par minutes entières via le chronomètre matériel
  * (SystemClock.elapsedRealtime), pour éviter toute corruption lors des ajustements d'horloge
  * réseau et pour limiter la fréquence de notification des {@link TripListener} abonnés (voir
  * {@link #accumulateElapsedTime}).
+ * </p>
+ * <p>
+ * Le trajet ne démarre qu'au démarrage du moteur, et non dès la mise du contact : un arrêt
+ * contact mis moteur coupé (ex: écouter de la musique en attendant quelqu'un) ne compte ni temps
+ * de conduite ni distance.
  * </p>
  */
 public class TripService extends Service {
@@ -60,14 +65,14 @@ public class TripService extends Service {
      * temps de conduite. N'avance que par minutes entières consommées (voir
      * {@link #accumulateElapsedTime}) : le reliquat sous la minute reste implicitement représenté
      * par l'écart entre {@link SystemClock#elapsedRealtime()} et cette valeur. Vaut 0 tant qu'aucun
-     * chronométrage n'est en cours (contact coupé).
+     * chronométrage n'est en cours (moteur coupé).
      */
     private long lastTickTime = 0L;
 
     /**
-     * État actuel de l'alimentation du véhicule (true = contact mis, false = contact coupé).
+     * État actuel du moteur (true = moteur en route, false = moteur coupé).
      */
-    private boolean isAccOn = false;
+    private boolean isEngineOn = false;
 
     /**
      * Dernier kilométrage connu de l'odomètre, pour calculer la distance parcourue avec le
@@ -100,7 +105,7 @@ public class TripService extends Service {
      * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind} (une
      * référence de méthode réévaluée à chaque appel ne le permettrait pas, voir sa doc).
      */
-    private final Consumer<Boolean> contactOnObserver = this::onContactOnChanged;
+    private final Consumer<Boolean> engineOnObserver = this::onEngineOnChanged;
     private final Consumer<Double> odometerObserver = this::onOdometerChanged;
 
     /**
@@ -110,14 +115,14 @@ public class TripService extends Service {
 
     /**
      * Tick périodique (sur {@link #mainHandler}) qui accumule le temps de conduite tant que le
-     * contact est mis. Indispensable car l'odomètre ne notifie qu'à chaque kilomètre entier
+     * moteur tourne. Indispensable car l'odomètre ne notifie qu'à chaque kilomètre entier
      * franchi ({@code Property} ne propage que les changements réels) : à l'arrêt ou en roulant
      * lentement, aucun autre événement ne ferait avancer les minutes.
      */
     private final Runnable timeTick = new Runnable() {
         @Override
         public void run() {
-            if (!isAccOn) {
+            if (!isEngineOn) {
                 return;
             }
             if (accumulateElapsedTime(SystemClock.elapsedRealtime())) {
@@ -162,7 +167,7 @@ public class TripService extends Service {
         public void onServiceConnected(ComponentName name, IBinder service) {
             TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
             telemetryService = binder.getService();
-            telemetryService.getData().contactOn.bind(contactOnObserver);
+            telemetryService.getData().engineOn.bind(engineOnObserver);
             telemetryService.getData().odometer.bind(odometerObserver);
             CarLog.d(TAG, "TripService connected to CANbus.");
         }
@@ -196,7 +201,7 @@ public class TripService extends Service {
 
     /**
      * Ajoute un nouvel abonné à la liste de diffusion des statistiques de trajet.
-     * Transmet immédiatement à ce nouvel abonné l'état actuel du contact et des statistiques.
+     * Transmet immédiatement à ce nouvel abonné l'état actuel des statistiques.
      *
      * @param listener L'écouteur à ajouter.
      */
@@ -248,31 +253,31 @@ public class TripService extends Service {
     }
 
     /**
-     * Écoute les changements d'état du contact de la voiture.
+     * Écoute les changements d'état du moteur de la voiture (démarrage / arrêt du trajet).
      * Filtre les doublons d'événements et initialise le chronomètre monotone. Rejouée sur
      * {@link #mainHandler} : tout le reste de l'état mutable de ce service n'est touché que
      * depuis le thread principal (voir {@link #onOdometerChanged}).
      *
-     * @param contactOn true si le contact est mis, false sinon.
+     * @param engineOn true si le moteur est en route, false sinon.
      */
-    private void onContactOnChanged(Boolean contactOn) {
+    private void onEngineOnChanged(Boolean engineOn) {
         mainHandler.post(() -> {
             // Protection contre les déclenchements en double
-            if (this.isAccOn == contactOn) {
+            if (this.isEngineOn == engineOn) {
                 return;
             }
-            this.isAccOn = contactOn;
+            this.isEngineOn = engineOn;
 
             long wallTimeNow = System.currentTimeMillis();
             long monotonicNow = SystemClock.elapsedRealtime();
 
-            if (contactOn) {
+            if (engineOn) {
                 checkSmartReset();
                 lastTickTime = monotonicNow;
                 mainHandler.removeCallbacks(timeTick);
                 mainHandler.postDelayed(timeTick, TIME_TICK_INTERVAL_MS);
 
-                CarLog.i(TAG, "Ignition on (contact) trip start");
+                CarLog.i(TAG, "Engine on, trip start");
             } else {
                 mainHandler.removeCallbacks(timeTick);
                 accumulateElapsedTime(monotonicNow);
@@ -280,7 +285,7 @@ public class TripService extends Service {
 
                 prefs.edit().putLong(PerfsKey.TripService.getLastAccOff(), wallTimeNow).commit();
 
-                CarLog.i(TAG, "Ignition off (contact) trip end");
+                CarLog.i(TAG, "Engine off, trip end");
             }
 
             notifyTripUpdated();
@@ -362,11 +367,11 @@ public class TripService extends Service {
                 boolean changed = false;
 
                 // Mise à jour du temps de trajet (par minutes entières) en roulant, via le chronomètre matériel
-                if (isAccOn) {
+                if (isEngineOn) {
                     changed |= accumulateElapsedTime(SystemClock.elapsedRealtime());
                 }
 
-                if (isAccOn && lastOdometerKm >= 0) {
+                if (isEngineOn && lastOdometerKm >= 0) {
                     // Arrondi à l'hectomètre (résolution de l'odomètre) pour gommer le bruit de
                     // la soustraction en virgule flottante (ex: 0,1 → 0,10000000000582077)
                     long deltaHm = Math.round((odometerKm - lastOdometerKm) * 10);
@@ -407,7 +412,7 @@ public class TripService extends Service {
         try {
             if (isBound) {
                 if (telemetryService != null) {
-                    telemetryService.getData().contactOn.unbind(contactOnObserver);
+                    telemetryService.getData().engineOn.unbind(engineOnObserver);
                     telemetryService.getData().odometer.unbind(odometerObserver);
                 }
                 unbindService(serviceConnection);

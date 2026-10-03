@@ -240,7 +240,7 @@ public class CardWeather extends FrameLayout implements Runnable {
         weatherInfoMap = Map.of(
                 WeatherTime.DAY, Map.of(
                         WeatherType.SUN, new WeatherInfo(R.drawable.bg_weather_day_sun, R.drawable.ic_weather_day_sun),
-                        WeatherType.SUN_CLOUD, new WeatherInfo(R.drawable.bg_weather_day_cloud, R.drawable.ic_weather_day_sun_cloud),
+                        WeatherType.SUN_CLOUD, new WeatherInfo(R.drawable.bg_weather_day_sun, R.drawable.ic_weather_day_sun_cloud),
                         WeatherType.CLOUD, new WeatherInfo(R.drawable.bg_weather_day_cloud, R.drawable.ic_weather_cloud),
                         WeatherType.RAIN, new WeatherInfo(R.drawable.bg_weather_day_cloud, R.drawable.ic_weather_rain),
                         WeatherType.SNOW, new WeatherInfo(R.drawable.bg_weather_day_cloud, R.drawable.ic_weather_snow),
