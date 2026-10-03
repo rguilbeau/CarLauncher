@@ -1,9 +1,12 @@
 package com.rguilbeau.carlauncher.component;
 
 import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.Context;
-import android.content.SharedPreferences;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.graphics.Color;
+import android.os.IBinder;
 import android.util.AttributeSet;
 
 import android.view.LayoutInflater;
@@ -16,7 +19,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
-import com.rguilbeau.carlauncher.service.TripService;
+import com.rguilbeau.carlauncher.service.trip.TripListener;
+import com.rguilbeau.carlauncher.service.trip.TripService;
+import com.rguilbeau.carlauncher.service.trip.TripStats;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import java.util.Locale;
@@ -25,14 +30,14 @@ import java.util.Locale;
  * Composant d'interface utilisateur autonome héritant de {@link FrameLayout}.
  * <p>
  * Ce composant assure l'affichage des données de statistiques de trajet (distance parcourue et temps de conduite).
- * Il observe de manière dynamique les modifications apportées aux {@link SharedPreferences} afin de mettre à jour
- * l'affichage en temps réel et permet une réinitialisation manuelle via un clic sur la carte.
+ * Il s'abonne à {@link TripService} via {@link TripListener} afin de mettre à jour l'affichage en temps réel
+ * et permet une réinitialisation manuelle (côté affichage uniquement) via un clic sur la carte.
  * </p>
  *
  * @author rguilbeau
  * @version 1.0
  */
-public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedPreferenceChangeListener {
+public class CardTrip extends FrameLayout implements TripListener {
 
     /**
      * Tag d'identification utilisé pour les journaux d'erreurs et de débogage (Logcat).
@@ -50,9 +55,37 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
     private final TextView txtTripTime;
 
     /**
-     * Instance des préférences partagées utilisée pour lire et modifier les données du trajet.
+     * Référence vers le service de trajet une fois la connexion établie.
      */
-    private final SharedPreferences prefs;
+    private TripService tripService;
+
+    /**
+     * Indicateur d'état précisant si le composant est actuellement attaché au service de trajet.
+     */
+    private boolean isBound = false;
+
+    /**
+     * Gère le cycle de vie de la connexion avec le service de trajet.
+     */
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de trajet et s'y abonne.
+         */
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            TripService.LocalBinder binder = (TripService.LocalBinder) service;
+            tripService = binder.getService();
+            tripService.addListener(CardTrip.this);
+        }
+
+        /**
+         * Oublie la référence au service de trajet devenue invalide.
+         */
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            tripService = null;
+        }
+    };
 
     /**
      * Constructeur utilisé lors de l'instanciation de la vue depuis un fichier de layout XML.
@@ -69,8 +102,6 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
         txtTripDistance = findViewById(R.id.txtTripDistance);
         txtTripTime = findViewById(R.id.txtTripTime);
 
-        prefs = context.getSharedPreferences(TripService.PREFS_NAME, Context.MODE_PRIVATE);
-
         // Attachement de l'écouteur de clic sur la vue racine pour proposer la réinitialisation
         View root = findViewById(R.id.card_root);
         if (root != null) {
@@ -82,43 +113,30 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est rattachée à une fenêtre active.
-     * Enregistre l'écouteur de préférences et déclenche la mise à jour initiale de l'interface.
+     * Établit la connexion avec le service de trajet.
      */
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
-        if (prefs != null) {
-            prefs.registerOnSharedPreferenceChangeListener(this);
-        }
-
-        update();
+        Intent intent = new Intent(getContext(), TripService.class);
+        isBound = getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
 
     /**
-     * Callback déclenché automatiquement lors de la modification d'une valeur dans les {@link SharedPreferences}.
+     * Callback déclenché à chaque mise à jour des statistiques de trajet par {@link TripService}.
      *
-     * @param sharedPreferences L'instance des préférences partagées modifiée.
-     * @param key               La clé correspondant à la donnée modifiée.
+     * @param daily Statistiques affichées (remises à zéro par l'utilisateur).
+     * @param full  Statistiques complètes de la journée (non utilisées ici).
      */
     @Override
-    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, @Nullable String key) {
-        if (TripService.KEY_DISTANCE.equals(key) || TripService.KEY_DRIVE_TIME.equals(key)) {
-            update();
-        }
-    }
-
-    /**
-     * Lit les métriques du trajet depuis les {@link SharedPreferences}, effectue les conversions d'unités,
-     * formate le temps de conduite et met à jour les composants visuels sur le thread UI.
-     */
-    public void update() {
+    public void onTripUpdated(TripStats daily, TripStats full) {
         try {
-            float distanceKm = prefs.getFloat(TripService.KEY_DISTANCE, 0f) / 1000f;
-            long totalDriveTime = prefs.getLong(TripService.KEY_DRIVE_TIME, 0L);
+            float distanceKm = daily.getDistanceMeters() / 1000f;
+            int totalDriveTimeMinutes = daily.getDriveTimeMinutes();
 
-            long minutes = (totalDriveTime / (1000 * 60)) % 60;
-            long hours = (totalDriveTime / (1000 * 60 * 60));
+            int minutes = totalDriveTimeMinutes % 60;
+            int hours = totalDriveTimeMinutes / 60;
 
             // Formatage du temps de conduite en heure/minute
             String timeFormatted;
@@ -128,9 +146,11 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                 timeFormatted = String.format(Locale.FRANCE, "%d min", minutes);
             }
 
-            // Formatage de la distance selon la valeur (1 décimale sous 1 km, sans décimale au-delà)
+            // Formatage de la distance selon la valeur (1 décimale sous 1 km, sans décimale au-delà).
+            // Seuil à 0,95 plutôt que 1 : la somme en float de 10 × 100 m peut donner 999,99 m,
+            // qui s'afficherait "1,0" au lieu de "1".
             String distanceFormatted;
-            if (distanceKm >= 0.1f && distanceKm < 0.9f) {
+            if (distanceKm > 0f && distanceKm < 0.95f) {
                 distanceFormatted = String.format(Locale.FRANCE, "%.1f", distanceKm);
             } else {
                 distanceFormatted = String.format(Locale.FRANCE, "%.0f", distanceKm);
@@ -143,13 +163,14 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                 }
             });
         } catch (Exception e) {
-            CarLog.e(TAG, "Error updating trip metrics from SharedPreferences", e);
+            CarLog.e(TAG, "Error updating trip metrics", e);
         }
     }
 
     /**
-     * Affiche une boîte de dialogue de confirmation pour réinitialiser les métriques du trajet
-     * (distance et temps de conduite) dans les {@link SharedPreferences}.
+     * Affiche une boîte de dialogue de confirmation pour réinitialiser l'affichage des métriques
+     * de trajet (distance et temps). Les statistiques réelles de la journée ({@code full}), utilisées
+     * pour la persistance en base, ne sont pas affectées par ce reset.
      */
     public void reset() {
         try {
@@ -157,13 +178,11 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
                     .setTitle("Réinitialiser le trajet ?")
                     .setMessage("Voulez-vous vraiment remettre la distance et le temps à zéro ?")
                     .setPositiveButton("Oui", (dialogInterface, which) -> {
-                        if (prefs != null) {
-                            prefs.edit()
-                                    .putFloat(TripService.KEY_DISTANCE, 0f)
-                                    .putLong(TripService.KEY_DRIVE_TIME, 0L)
-                                    .apply();
-
+                        if (tripService != null) {
+                            tripService.resetDaily();
                             Toast.makeText(getContext(), "Compteur réinitialisé !", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getContext(), "Service non connecté", Toast.LENGTH_SHORT).show();
                         }
                     })
                     .setNegativeButton("Non", null)
@@ -179,14 +198,18 @@ public class CardTrip extends FrameLayout implements SharedPreferences.OnSharedP
 
     /**
      * Méthode de cycle de vie appelée lorsque la vue est détachée de sa fenêtre parent.
-     * Désenregistre l'écouteur de préférences afin d'éviter les fuites de mémoire.
+     * Désabonne le composant et libère la connexion au service afin d'éviter les fuites de mémoire.
      */
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
 
-        if (prefs != null) {
-            prefs.unregisterOnSharedPreferenceChangeListener(this);
+        if (isBound) {
+            if (tripService != null) {
+                tripService.removeListener(this);
+            }
+            getContext().unbindService(serviceConnection);
+            isBound = false;
         }
     }
 }

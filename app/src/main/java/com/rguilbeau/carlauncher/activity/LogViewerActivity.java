@@ -35,20 +35,66 @@ import java.util.List;
  */
 public class LogViewerActivity extends AppCompatActivity {
 
+    /**
+     * Champ de saisie permettant de filtrer les lignes de journal affichées.
+     */
     private EditText editSearchLogs;
+
+    /**
+     * Bouton déclenchant l'exportation et l'envoi des journaux vers un service d'hébergement temporaire.
+     */
     private Button btnExportLogs;
+
+    /**
+     * Bouton déclenchant la suppression complète des journaux d'événements.
+     */
     private Button btnClearLogs;
+
+    /**
+     * Bouton permettant de charger la date de journal précédente disponible.
+     */
     private Button btnLoadMore;
+
+    /**
+     * Composant affichant la liste défilante des lignes de journal.
+     */
     private RecyclerView recyclerLogs;
+
+    /**
+     * Composant affichant un message lorsqu'aucun journal n'est disponible.
+     */
     private TextView textEmptyLogs;
+
+    /**
+     * Gestionnaire de mise en page du RecyclerView, utilisé pour contrôler le défilement.
+     */
     private LinearLayoutManager layoutManager;
 
+    /**
+     * Dépôt de données donnant accès aux fichiers de journaux d'événements.
+     */
     private LogRepository logRepository;
+
+    /**
+     * Adaptateur gérant l'affichage et le filtrage des lignes de journal.
+     */
     private LogViewAdapter logViewAdapter;
 
+    /**
+     * Liste des dates de journal disponibles, triées de la plus récente à la plus ancienne.
+     */
     private List<String> availableDates = new ArrayList<>();
+
+    /**
+     * Index de la date actuellement chargée dans {@link #availableDates}.
+     */
     private int currentDateIndex = 0;
 
+    /**
+     * Initialise l'activité, relie les composants graphiques et lance le chargement des journaux.
+     *
+     * @param savedInstanceState L'état précédemment sauvegardé de l'activité, si existant.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -81,6 +127,9 @@ public class LogViewerActivity extends AppCompatActivity {
         recyclerLogs.setAdapter(logViewAdapter);
 
         recyclerLogs.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            /**
+             * Réévalue la visibilité du bouton de chargement à chaque défilement de la liste.
+             */
             @Override
             public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
@@ -99,6 +148,9 @@ public class LogViewerActivity extends AppCompatActivity {
                 // Aucun traitement requis
             }
 
+            /**
+             * Répercute la nouvelle valeur du champ de recherche sur le filtre de l'adaptateur.
+             */
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 logViewAdapter.filter(s.toString());
@@ -121,6 +173,9 @@ public class LogViewerActivity extends AppCompatActivity {
 
             LogExporter exporter = new LogExporter(this);
             exporter.exportAndUploadAsync(new LogExporter.ExportCallback() {
+                /**
+                 * Affiche le code QR et le lien de téléchargement une fois l'export réussi.
+                 */
                 @Override
                 public void onSuccess(Bitmap qrCode, String url) {
                     btnExportLogs.setEnabled(true);
@@ -142,6 +197,9 @@ public class LogViewerActivity extends AppCompatActivity {
                     dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.WHITE);
                 }
 
+                /**
+                 * Affiche une boîte de dialogue décrivant l'erreur survenue lors de l'export.
+                 */
                 @Override
                 public void onError(String message) {
                     btnExportLogs.setEnabled(true);
@@ -184,6 +242,9 @@ public class LogViewerActivity extends AppCompatActivity {
      */
     private void clearLogs() {
         logRepository.clearAllLogsAsync(new LogRepository.LogCallback<Void>() {
+            /**
+             * Vide l'affichage et désactive les actions devenues inutiles une fois les logs supprimés.
+             */
             @Override
             public void onSuccess(Void result) {
                 logViewAdapter.setLogLines(new ArrayList<>());
@@ -196,6 +257,9 @@ public class LogViewerActivity extends AppCompatActivity {
                 Toast.makeText(LogViewerActivity.this, "Journaux supprimés", Toast.LENGTH_SHORT).show();
             }
 
+            /**
+             * Signale à l'utilisateur l'échec de la suppression des journaux.
+             */
             @Override
             public void onError(Exception e) {
                 Toast.makeText(LogViewerActivity.this, "Erreur lors de la suppression", Toast.LENGTH_SHORT).show();
@@ -231,6 +295,9 @@ public class LogViewerActivity extends AppCompatActivity {
         String latestDate = availableDates.get(currentDateIndex);
 
         logRepository.getLogsForDateAsync(latestDate, new LogRepository.LogCallback<List<String>>() {
+            /**
+             * Affiche les lignes chargées ou l'état vide, puis positionne le défilement en bas de liste.
+             */
             @Override
             public void onSuccess(List<String> lines) {
                 if (lines.isEmpty()) {
@@ -250,6 +317,9 @@ public class LogViewerActivity extends AppCompatActivity {
                 updateLoadMoreButtonVisibility();
             }
 
+            /**
+             * Affiche un message d'erreur lorsque le chargement du journal le plus récent échoue.
+             */
             @Override
             public void onError(Exception e) {
                 recyclerLogs.setVisibility(View.GONE);
@@ -271,6 +341,9 @@ public class LogViewerActivity extends AppCompatActivity {
         String olderDate = availableDates.get(currentDateIndex);
 
         logRepository.getLogsForDateAsync(olderDate, new LogRepository.LogCallback<List<String>>() {
+            /**
+             * Insère les lignes plus anciennes en tête de liste en conservant la position de défilement.
+             */
             @Override
             public void onSuccess(List<String> olderLines) {
                 if (!olderLines.isEmpty()) {
@@ -282,6 +355,9 @@ public class LogViewerActivity extends AppCompatActivity {
                 updateLoadMoreButtonVisibility();
             }
 
+            /**
+             * Masque le bouton de chargement lorsque la lecture d'une date plus ancienne échoue.
+             */
             @Override
             public void onError(Exception e) {
                 btnLoadMore.setVisibility(View.GONE);

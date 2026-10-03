@@ -1,7 +1,10 @@
 package com.rguilbeau.carlauncher.component;
 
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.location.Address;
 import android.location.Geocoder;
@@ -12,6 +15,7 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.os.Build;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
@@ -30,6 +34,8 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 import com.rguilbeau.carlauncher.R;
 import com.rguilbeau.carlauncher.manager.PermissionManager;
+import com.rguilbeau.carlauncher.service.telemetry.TelemetryService;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKey;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 import org.json.JSONObject;
@@ -41,6 +47,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -54,6 +61,11 @@ import okhttp3.Response;
  * Ce composant gère sa propre géolocalisation, met en cache la dernière position connue
  * pour un démarrage instantané, et s'abonne intelligemment aux événements réseau et GPS
  * afin d'optimiser la batterie et le volume de requêtes.
+ * </p>
+ * <p>
+ * La température affichée n'est pas celle de la météo mais la température extérieure mesurée par
+ * le véhicule, lue via le {@link TelemetryService}. Tant qu'aucune valeur n'a été reçue, le texte
+ * par défaut du layout ({@code --°C}) est conservé.
  * </p>
  *
  * @author rguilbeau
@@ -72,22 +84,7 @@ public class CardWeather extends FrameLayout implements Runnable {
     private static final long REFRESH_INTERVAL_MS = 600000L;
 
     /**
-     * Nom du fichier de préférences partagées utilisé pour sauvegarder la dernière position GPS.
-     */
-    private static final String PREF_NAME = "WeatherPrefs";
-
-    /**
-     * Clé de préférence pour stocker la dernière latitude connue.
-     */
-    private static final String PREF_LAT = "last_lat";
-
-    /**
-     * Clé de préférence pour stocker la dernière longitude connue.
-     */
-    private static final String PREF_LON = "last_lon";
-
-    /**
-     * Composant visuel affichant la température actuelle en °C.
+     * Composant visuel affichant la température extérieure du véhicule en °C.
      */
     private final TextView txtWeatherTemp;
 
@@ -150,6 +147,49 @@ public class CardWeather extends FrameLayout implements Runnable {
      * Service d'exécution asynchrone mono-thread dédié aux opérations lourdes (ex: Geocoder).
      */
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
+    /**
+     * Référence vers le service de télémétrie de la voiture.
+     */
+    private TelemetryService telemetryService;
+
+    /**
+     * Indicateur d'état précisant si la vue est actuellement connectée (bind) au service de télémétrie.
+     */
+    private boolean isBound = false;
+
+    /**
+     * Instance stable de l'observateur, conservée pour pouvoir se désabonner via
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property#unbind}.
+     */
+    private final Consumer<Integer> outsideTemperatureObserver = this::onOutsideTemperatureChanged;
+
+    /**
+     * Gestionnaire de connexion entre la vue et le service de télémétrie.
+     */
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        /**
+         * Récupère l'instance du service de télémétrie et s'abonne à la température extérieure.
+         */
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            TelemetryService.LocalBinder binder = (TelemetryService.LocalBinder) service;
+            telemetryService = binder.getService();
+            telemetryService.getData().outsideTemperature.bind(outsideTemperatureObserver);
+            isBound = true;
+            CarLog.d(TAG, "Connected to TelemetryService");
+        }
+
+        /**
+         * Oublie la référence au service de télémétrie devenue invalide.
+         */
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isBound = false;
+            telemetryService = null;
+            CarLog.d(TAG, "Disconnected from TelemetryService");
+        }
+    };
 
     /**
      * Énumération des conditions météorologiques majeures gérées par l'interface.
@@ -235,6 +275,14 @@ public class CardWeather extends FrameLayout implements Runnable {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
 
+        // Se connecte au service de télémétrie pour la température extérieure du véhicule
+        try {
+            Intent intent = new Intent(getContext(), TelemetryService.class);
+            getContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        } catch (Exception e) {
+            CarLog.e(TAG, "Error binding to TelemetryService", e);
+        }
+
         // Charge la position depuis les SharedPreferences
         loadLocationFromPrefs();
 
@@ -252,10 +300,10 @@ public class CardWeather extends FrameLayout implements Runnable {
      * Permet d'éviter l'attente du signal GPS lors d'un démarrage à froid.
      */
     private void loadLocationFromPrefs() {
-        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        if (prefs.contains(PREF_LAT) && prefs.contains(PREF_LON)) {
-            float lat = prefs.getFloat(PREF_LAT, 0f);
-            float lon = prefs.getFloat(PREF_LON, 0f);
+        SharedPreferences prefs = getContext().getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
+        if (prefs.contains(PerfsKey.CardWeather.getLastLat()) && prefs.contains(PerfsKey.CardWeather.getLastLon())) {
+            float lat = prefs.getFloat(PerfsKey.CardWeather.getLastLat(), 0f);
+            float lon = prefs.getFloat(PerfsKey.CardWeather.getLastLon(), 0f);
 
             lastKnownLocation = new Location("CacheManuel");
             lastKnownLocation.setLatitude(lat);
@@ -272,10 +320,10 @@ public class CardWeather extends FrameLayout implements Runnable {
      */
     private void saveLocationToPrefs(Location location) {
         if (location == null) return;
-        SharedPreferences prefs = getContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        SharedPreferences prefs = getContext().getSharedPreferences(PerfsKey.getPrefsName(), Context.MODE_PRIVATE);
         prefs.edit()
-                .putFloat(PREF_LAT, (float) location.getLatitude())
-                .putFloat(PREF_LON, (float) location.getLongitude())
+                .putFloat(PerfsKey.CardWeather.getLastLat(), (float) location.getLatitude())
+                .putFloat(PerfsKey.CardWeather.getLastLon(), (float) location.getLongitude())
                 .apply();
     }
 
@@ -295,6 +343,10 @@ public class CardWeather extends FrameLayout implements Runnable {
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 300000).build();
 
         locationCallback = new LocationCallback() {
+            /**
+             * Met à jour et sauvegarde la position reçue, et force un rafraîchissement immédiat
+             * si aucune position n'était connue jusqu'ici.
+             */
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
                 boolean wasNull = (lastKnownLocation == null);
@@ -331,7 +383,6 @@ public class CardWeather extends FrameLayout implements Runnable {
     private void executeWeatherUpdate() {
         if (lastKnownLocation == null) {
             CarLog.w(TAG, "Waiting for GPS fix...");
-            if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
             if (txtCity != null) txtCity.setText("Recherche position...");
             scheduleNextUpdate();
             return;
@@ -376,7 +427,6 @@ public class CardWeather extends FrameLayout implements Runnable {
 
         isWaitingForNetwork = true;
         CarLog.i(TAG, "No Internet connection. Subscribing to network availability events...");
-        if (txtWeatherTemp != null) txtWeatherTemp.setText("--°C");
         if (txtCity != null) txtCity.setText("Attente de connexion...");
 
         NetworkRequest request = new NetworkRequest.Builder()
@@ -384,6 +434,9 @@ public class CardWeather extends FrameLayout implements Runnable {
                 .build();
 
         networkCallback = new ConnectivityManager.NetworkCallback() {
+            /**
+             * Se désabonne du callback réseau et relance la mise à jour météo dès que la connexion revient.
+             */
             @Override
             public void onAvailable(@NonNull Network network) {
                 super.onAvailable(network);
@@ -437,12 +490,18 @@ public class CardWeather extends FrameLayout implements Runnable {
         Request request = new Request.Builder().url(url).build();
 
         httpClient.newCall(request).enqueue(new Callback() {
+            /**
+             * Journalise l'échec réseau et replanifie une nouvelle tentative.
+             */
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
                 CarLog.e(TAG, "Failed to execute Open-Meteo API request", e);
                 scheduleNextUpdate();
             }
 
+            /**
+             * Parse la réponse JSON de l'API et met à jour l'affichage météo, ou replanifie en cas d'échec.
+             */
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -452,7 +511,6 @@ public class CardWeather extends FrameLayout implements Runnable {
                         JSONObject currentWeather = jsonObject.getJSONObject("current_weather");
                         JSONObject daily = jsonObject.getJSONObject("daily");
 
-                        int temp = (int) Math.round(currentWeather.getDouble("temperature"));
                         int weatherCode = currentWeather.getInt("weathercode");
                         String currentTimeStr = currentWeather.getString("time");
 
@@ -464,9 +522,6 @@ public class CardWeather extends FrameLayout implements Runnable {
                         WeatherInfo info = getWeatherInfo(time, type);
 
                         post(() -> {
-                            if (txtWeatherTemp != null) {
-                                txtWeatherTemp.setText(temp + "°C");
-                            }
                             if (imageViewWeatherIcon != null) {
                                 imageViewWeatherIcon.setImageResource(info.icon);
                             }
@@ -488,6 +543,22 @@ public class CardWeather extends FrameLayout implements Runnable {
                     CarLog.e(TAG, "Server error during weather request. Code: " + response.code());
                     scheduleNextUpdate();
                 }
+            }
+        });
+    }
+
+    /**
+     * Reçoit la nouvelle température extérieure du véhicule et met à jour l'affichage sur le
+     * thread principal (voir la doc de
+     * {@link com.rguilbeau.carlauncher.service.telemetry.canbus.data.Property} pour le thread
+     * d'appel de cet observateur).
+     *
+     * @param temperature La température extérieure en °C.
+     */
+    private void onOutsideTemperatureChanged(Integer temperature) {
+        post(() -> {
+            if (txtWeatherTemp != null) {
+                txtWeatherTemp.setText(temperature + "°C");
             }
         });
     }
@@ -581,6 +652,20 @@ public class CardWeather extends FrameLayout implements Runnable {
                 connectivityManager.unregisterNetworkCallback(networkCallback);
             } catch (Exception ignored) { }
             isWaitingForNetwork = false;
+        }
+
+        if (isInEditMode()) return;
+
+        try {
+            if (isBound) {
+                if (telemetryService != null) {
+                    telemetryService.getData().outsideTemperature.unbind(outsideTemperatureObserver);
+                }
+                getContext().unbindService(serviceConnection);
+                isBound = false;
+            }
+        } catch (Exception e) {
+            CarLog.e(TAG, "Error disconnecting telemetry service", e);
         }
     }
 }

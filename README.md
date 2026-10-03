@@ -16,13 +16,13 @@
 ```mermaid
 graph TD
     subgraph SOURCING ["1. Entrées & Capteurs"]
-        CAN["Information véhicule<br/>(Broadcast com.qf.action.xx)"]
+        CAN["Bus CAN Confort<br/>(Adaptateur CANable USB / Simulateur en dev)"]
         GPS["Position GPS<br/>(API Android Location)"]
         ANDROID["Notifications Android<br/>(Média & Maps)"]
     end
 
     subgraph SERVICES ["2. Services d'Arrière-Plan"]
-        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact)"]
+        SERVICE_CAN["Service Télémétrie<br/>(Vitesse, RPM, Contact, Kilométrage)"]
         SERVICE_TRIP["Service Trajet<br/>(Distance, Chrono)"]
         SERVICE_NOTIF["Service Notification<br/>(Musique, Navigation Maps)"]
     end
@@ -95,11 +95,88 @@ Ces fichiers servent de base de référence pour le *reverse-engineering* du sys
 
 **Applications et frameworks (pour décompilation) :**
 * `framework.apk` : Le cœur du système Android modifié par le constructeur. Utile pour analyser les comportements non standards (comme les restrictions du gestionnaire de fenêtres).
-* `com.qf.vehicule.apk` : Gère la communication directe avec le boîtier CANbus (permet de retrouver les actions pour la vitesse, le régime moteur, le contact).
+* `com.qf.vehicule.apk` : Gère la communication du constructeur avec le boîtier CANbus. La télémétrie du Launcher ne dépend plus de cet APK (voir [Télémétrie (Bus CAN)](#télémétrie-bus-can) : lecture directe du bus via un adaptateur CANable) ; il reste une référence utile pour identifier d'autres trames/IDs du bus Confort.
 * `com.qf.carsettings.apk` : Application des paramètres natifs du véhicule.
 * `com.qf.commonfunc.apk` : Regroupe les fonctions communes et les services en arrière-plan du constructeur (gestion des commandes au volant, radio, etc.).
 
-> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés, indispensables pour intégrer la télémétrie dans le Launcher.
+> **Note :** Il est recommandé de décompiler ces APK (via un outil comme *Jadx*) pour retrouver les noms exacts des `Intents` et des `Broadcasts` cachés (notifications média/navigation, commandes au volant...).
+
+## Base de données
+
+L'application persiste certaines données (statistiques de trajet, dernière position connue) sur une base **PostgreSQL** hébergée chez **[Neon](https://neon.tech)** (serverless, autoscale à zéro).
+
+### Connexion
+
+La connexion se fait en **JDBC direct** (`org.postgresql:postgresql`) plutôt que via l'API REST/HTTP de Neon (Data API) : le projet ne compte que deux tables, la surcharge d'une couche REST ne se justifiait pas (étant donné la complexité de l'authentification).
+
+* `NeonClient` (`repository/client/NeonClient.java`) ouvre et réutilise une connexion JDBC globale (`DriverManager.getConnection(...)`), rouverte automatiquement si elle est fermée, invalide, ou après un échec.
+* Les repositories (`CarLocationRepository`, `TripDailyRepository`, ...) n'exécutent jamais de requête directement : ils empilent leur SQL via `WorkerManager.addQueue(...)`.
+* `WorkerManager` (au-dessus de **WorkManager**) transforme chaque requête en file persistante FIFO (stockée en base Room par WorkManager), contrainte à une connexion réseau disponible (`NetworkType.CONNECTED`), avec retry automatique (backoff linéaire) en cas d'échec. Elle survit donc au kill du process ou à un redémarrage de l'appareil tant qu'une requête n'a pas été exécutée avec succès.
+
+### Fournisseur (Neon) : branches
+
+Le projet Neon possède deux branches, avec les mêmes identifiants (user/password) :
+
+| Branche | Usage |
+|---|---|
+| `production` | Base utilisée en usage réel sur l'autoradio |
+| `dev` | Base utilisée pour le développement local / émulateur |
+
+Le choix de la branche utilisée ne dépend **pas** de qui compile l'application (Android Studio vs pipeline GitHub) mais du device sur lequel elle tourne — voir [Environnements Dev / Prod](#environnements-dev--prod) ci-dessous.
+
+### `local.properties` et secrets
+
+Les identifiants de connexion (URLs JDBC, user, password) ainsi que les mots de passe de signature de l'APK **ne sont jamais commités** : ils sont lus depuis `local.properties` (fichier local, listé dans `.gitignore`) par `app/build.gradle.kts`, puis exposés au code Java via des champs générés (`BuildConfig.DEV_DB_URL`, `BuildConfig.PROD_DB_URL`, `BuildConfig.DB_USER`, `BuildConfig.DB_PASSWORD`).
+
+En l'absence de `local.properties` (typiquement en CI/GitHub Actions), le script retombe automatiquement sur des **variables d'environnement** de même nom (`secret(key)` cherche d'abord `local.properties`, puis `System.getenv(key)`) — dans ce cas les valeurs viennent des **secrets du dépôt GitHub**.
+
+Clés attendues dans `local.properties` :
+
+```properties
+# Connexion base de données (Neon / PostgreSQL) — les deux URLs sont toujours embarquées,
+# le user/password est le même pour les deux branches (voir section Environnements Dev / Prod)
+DEV_DB_URL=jdbc:postgresql://<host-neon-dev>:5432/car_launcher
+PROD_DB_URL=jdbc:postgresql://<host-neon-prod>:5432/car_launcher
+DB_USER=<utilisateur>
+DB_PASSWORD=<mot_de_passe>
+
+# Signature de l'APK (voir section Compilation ci-dessous)
+SIGNING_STORE_PASSWORD=<mot_de_passe_store>
+SIGNING_KEY_PASSWORD=<mot_de_passe_cle>
+```
+
+> **Sécurité :** ce fichier contient des secrets réels en local (identifiants Neon notamment) et ne doit **jamais** être ajouté au dépôt Git. Il est déjà exclu via `.gitignore` (`local.properties`) ; en cas de doute, vérifier avec `git status` avant tout commit/push.
+
+### Environnements Dev / Prod
+
+Le launcher se met à jour lui-même en téléchargeant la dernière release GitHub (Self-Update, voir [Déploiement Automatisé](#déploiement-automatisé-github-actions)) : **un seul et même APK** circule donc, que ce soit sur l'autoradio réel ou sur un device de test. Séparer dev/prod via deux artefacts de build différents aurait empêché de tester ce mécanisme de mise à jour sans risquer d'installer/exécuter la configuration prod ailleurs que sur la voiture.
+
+À la place, le choix de la branche Neon utilisée se fait **à l'exécution, en fonction du device**, et non du build :
+
+* `BuildConfig` embarque toujours les deux URLs (`DEV_DB_URL` et `PROD_DB_URL`).
+* `DeviceEnvironment.isProd()` (`utils/DeviceEnvironment.java`) vérifie la présence d'un fichier marqueur : `/system/etc/carlauncher_prod`.
+* Ce marqueur n'est déposé **que** par `install.bat`, lors du flash en `priv-app`, et seulement après confirmation explicite dans le script ("Est-ce que ce device est le VRAI device de PRODUCTION ?"). Étant dans `/system`, il survit aux mises à jour de l'application (y compris via le Self-Update).
+* `NeonClient` choisit `BuildConfig.PROD_DB_URL` ou `BuildConfig.DEV_DB_URL` selon `DeviceEnvironment.isProd()`.
+* Sur tout device non marqué prod, un badge rouge **"DEV"** s'affiche en bas de l'écran d'accueil pour visualiser immédiatement l'environnement actif.
+
+Conséquence pratique : installer/tester l'APK (y compris la release GitHub officielle) sur un émulateur ou un device de test ne touchera **jamais** la base de production, sauf à avoir explicitement répondu "oui" à la question de `install.bat` sur ce device.
+
+## Préférences locales (SharedPreferences)
+
+En complément de la base Neon, l'application conserve certaines données uniquement sur le device (raccourcis assignés aux boutons, dernière position météo en cache, compteurs de trajet...) via les **SharedPreferences** standard d'Android, toutes regroupées dans un seul fichier (`CarLauncherPrefs`).
+
+### `PerfsKey` : centralisation des clés
+
+Toutes les clés utilisées à travers l'application sont centralisées dans `utils/PerfsKey.java`, regroupées par classe imbriquée correspondant à leur classe d'origine (`PerfsKey.TripStats`, `PerfsKey.TripService`, `PerfsKey.ShortcutStrategy`, `PerfsKey.CardWeather`...). Chaque classe imbriquée préfixe ses propres clés (ex: `trip_stats_`, `card_weather_`) pour éviter toute collision au sein du fichier partagé.
+
+### `PerfsKeyMigration` : faire évoluer une clé sans perte de données
+
+Renommer une clé ou changer le type de son contenu ne doit **jamais** nécessiter de vider les préférences existantes ni d'inventer une nouvelle clé arbitraire à la volée. `utils/PerfsKeyMigration.java` fournit un système de migration versionné, inspiré des migrations de base de données :
+
+* `PerfsKey.MIGRATIONS` déclare un tableau ordonné d'étapes ; l'index d'une étape correspond à la version de schéma qu'elle fait atteindre.
+* Helpers disponibles pour construire une étape : `renameKey(oldKey, newKey)`, `changeType(key, fromType, toType)` (conversion automatique entre `Integer`, `Long`, `Float`, `Boolean`, `String`), `removeKey(key)`, et `clear(prefsFileName)` (suppression complète d'un fichier de préférences, y compris un fichier legacy qui n'est plus utilisé).
+* `PerfsKeyMigration.migrate(context)` est appelé une seule fois, tout au début de `CarLauncherApp.onCreate()` (avant tout accès aux préférences par un composant de l'app). Chaque étape manquante est rejouée et **committée individuellement** : un crash en cours de route ne rejoue pas une migration déjà appliquée.
+* Pour ajouter une migration : ajouter une nouvelle entrée à la fin de `MIGRATIONS`, ne jamais modifier ni supprimer une entrée déjà publiée.
 
 ## Compilation (Release)
 
@@ -139,13 +216,11 @@ L'installation de cette application ne se fait pas de manière classique. Elle d
 
 ### priv-app
 
-Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour trois raisons majeures :
+Placer l'application dans le dossier `/system/priv-app/` de l'autoradio est indispensable pour deux raisons majeures :
 
-1. **Lecture des données de la voiture (Télémétrie) :**
-   Pour recevoir la vitesse, le régime moteur (RPM) et les signaux de contact (ACC ON/OFF), l'application doit s'abonner aux flux du boîtier CANbus. Cela nécessite de modifier des paramètres restreints d'Android (`Settings.Global`) via la permission critique `WRITE_SECURE_SETTINGS`. Une application `priv-app` obtient cette permission automatiquement sans blocage de sécurité.
-2. **Immunité contre la fermeture (Task Killer) :**
-   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, notre service de chronomètre devient intouchable. Il tournera toujours en tâche de fond pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
-3. **Mises à jour (Self-Update) :**
+1. **Immunité contre la fermeture (Task Killer) :**
+   Les autoradios Android possèdent une gestion de l'énergie très agressive qui "tue" les applications en arrière-plan. En tant que `priv-app`, nos services (télémétrie, chronomètre de trajet...) deviennent intouchables. Ils tournent toujours en tâche de fond, y compris pour garantir la sauvegarde des données au moment précis de l'extinction du moteur.
+2. **Mises à jour (Self-Update) :**
    Ce statut octroie la permission `INSTALL_PACKAGES`, permettant à l'application de télécharger ses propres mises à jour depuis GitHub et de les installer en arrière-plan, sans aucune intervention de l'utilisateur à l'écran.
 
 ### Permissions système
@@ -247,24 +322,57 @@ Pour s'assurer que l'installation en `priv-app` a fonctionné :
 - S'il est **grisé, absent, ou remplacé par "Désactiver"** : L'installation a réussi, l'application fait désormais partie intégrante du système d'usine.
 - S'il est cliquable normalement (et permet de supprimer l'application) : L'installation a échoué, l'application est installée de manière classique. Vérifier les logs du script `install.bat` pour identifier le blocage lors de la copie.
 
-## Simulation et Tests ADB (Télémétrie & Veille)
+## Télémétrie (Bus CAN)
 
-Il est possible de simuler les signaux du véhicule (CANbus/MCU QF01) via **ADB** afin de tester le fonctionnement du `CarTelemetryService` et du `TripService` sur émulateur sans être raccordé au véhicule.
+La télémétrie (vitesse, régime moteur, contact, kilométrage) est lue directement sur le bus CAN **Confort** (125 kbps) du véhicule, exposée par `TelemetryService` (`service/telemetry/`) sous forme de `Property<T>` observables regroupées dans `VehicleData` :
 
-* **Activer le contact (ACC ON) :**
-
-```bash
-adb shell am broadcast -a com.qf.action.ACC_ON
+```java
+VehicleData data = telemetryService.getData();
+data.rpm.bind(this::onRpmChanged);
+data.speed.bind(this::onSpeedChanged);
 ```
 
-* **Désactiver le contact (ACC OFF) :**
+### Architecture
+
+* `CanBus` résout, au démarrage, les décodeurs de trames (`Frame`) disponibles pour le véhicule ciblé (`FrameResolver`, registre statique indexé par `Vehicle`), puis démarre un `CanReader`.
+* Chaque `Frame` (ex: `Frame0B6`, `Frame0F6` pour la Peugeot 407) décode les octets d'une trame CAN précise et met à jour `VehicleData` — un seul point de vérité, partagé par toute l'app.
+* `CanReader` a deux implémentations, choisies par `TelemetryService` selon `DeviceEnvironment.isProd()` :
+  * **`CanableReader`** (production) : lit un adaptateur [CANable](https://canable.io) branché en USB via `usb-serial-for-android` (protocole SLCAN, écoute seule/Listen-Only à 125 kbps). Gère la demande de permission USB ainsi que la reconnexion automatique (branchement/débranchement détectés en temps réel, nouvel essai après une erreur de lecture).
+  * **`ReaderSimulatorPeugeot407`** (dev/test — actif par défaut sur tout device non marqué prod) : génère de fausses trames CAN 0B6/0F6, avec le même encodage que les trames réelles, et les fait décoder par les vrais `Frame` : toute la chaîne est exercée sans adaptateur ni véhicule branché. Le kilométrage simulé, lui, est persisté (SharedPreferences) comme un vrai odomètre — il ne repart jamais de zéro entre deux lancements de l'app. La température extérieure est initialisée à 20 °C au démarrage du simulateur.
+
+### Simulation et tests ADB
+
+Tant qu'aucune routine n'est déclenchée, le simulateur reste inerte (contact coupé, régime et vitesse à zéro — l'odomètre, lui, garde sa dernière valeur persistée). Il est entièrement piloté par broadcast, pour tester sans recompiler l'app :
+
+* **Démarrer un trajet type** (ralenti → accélération → croisière → décélération → ralenti, avec la chute de régime caractéristique à chaque changement de rapport simulé) :
 
 ```bash
-adb shell am broadcast -a com.qf.action.ACC_OFF
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.START_ROUTINE_1 --ef cruise_speed_kmh 130 --ez loop true
 ```
+*(les deux extras sont optionnels : `cruise_speed_kmh` défaut 110, `loop` défaut true — l'odomètre continue depuis sa valeur courante, voir `SET_ODOMETER` ci-dessous pour le repositionner)*
 
-* **Simuler la vitesse et le régime moteur (ex : 60 km/h, 2200 RPM) :**
+* **Arrêter le trajet en cours :**
 
 ```bash
-adb shell am broadcast -a com.qf.vehicle.action.DATA_SHARE --ei speed 60 --ei rpm 2200
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.STOP_ROUTINE
 ```
+
+* **Forcer une valeur précise** (écrasée au tick suivant si un trajet est actif) :
+
+```bash
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_RPM --ei value 3000
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_SPEED --ef value 90
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_CONTACT_ON --ez value true
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_ODOMETER --el value 87450
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SET_OUTSIDE_TEMPERATURE --ei value 5
+```
+
+* **Afficher / masquer un message d'information** (trame 1A1, décodée par `Frame1A1` et affichée en overlay par `PopupService`) :
+
+```bash
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.SHOW_POPUP_MESSAGE --es value D8
+adb shell am broadcast -a com.rguilbeau.carlauncher.debug.simulator.HIDE_POPUP_MESSAGE
+```
+*(`value` est le code hexadécimal du message, préfixe `0x` optionnel — voir la table de `Frame1A1`, ex : `D8` = « Risque de verglas ». Les trajets n'émettent pas cette trame : un message affiché reste visible jusqu'au masquage ou à sa fermeture par l'utilisateur)*
+
+> **Note :** ce canal de contrôle n'existe que lorsque `ReaderSimulatorPeugeot407` est instancié (jamais en production, voir `DeviceEnvironment.isProd()` ci-dessus) — son receiver est donc volontairement exporté (atteignable par `adb`), sans risque hors d'un device de dev/test.

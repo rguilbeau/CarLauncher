@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bandeau haut affiché en overlay par PopupService pour les messages du véhicule. Le fond et
+     l'icône sont remplacés selon le niveau du message (voir PopupService#applyLevel) -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_popup_card_warning"
+    android:elevation="@dimen/_6sdp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="@dimen/_10sdp"
+    android:paddingTop="@dimen/_8sdp"
+    android:paddingEnd="@dimen/_10sdp"
+    android:paddingBottom="@dimen/_8sdp">
+
+    <ImageView
+        android:id="@+id/popup_icon"
+        android:layout_width="@dimen/_30sdp"
+        android:layout_height="@dimen/_30sdp"
+        android:background="@drawable/bg_popup_icon_warning"
+        android:importantForAccessibility="no"
+        android:padding="@dimen/_6sdp"
+        android:src="@drawable/ic_popup_warning" />
+
+    <TextView
+        android:id="@+id/popup_message"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/_12sdp"
+        android:layout_marginEnd="@dimen/_12sdp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#FFFFFF"
+        android:textSize="@dimen/_12sdp"
+        android:textStyle="bold"
+        tools:text="Risque de verglas" />
+
+    <ImageView
+        android:id="@+id/popup_close"
+        android:layout_width="@dimen/_24sdp"
+        android:layout_height="@dimen/_24sdp"
+        android:background="@drawable/bg_popup_close"
+        android:clickable="true"
+        android:contentDescription="Fermer"
+        android:focusable="true"
+        android:padding="@dimen/_6sdp"
+        android:src="@drawable/ic_popup_close" />
+
+</LinearLayout>

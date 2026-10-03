@@ -80,6 +80,20 @@ if %ERRORLEVEL% NEQ 0 (
 adb shell chmod 644 /system/etc/permissions/%PRIVAPP_XML%
 
 echo.
+echo ===================================================
+echo   Est-ce que ce device est le VRAI device de PRODUCTION ?
+echo ===================================================
+choice /C ON /N /M "Marquer ce device comme PROD ? (O/N) : "
+if errorlevel 2 (
+    echo Passage en environnement DEV, suppression du marqueur PROD ^(si present^)...
+    adb shell rm -f /system/etc/carlauncher_prod
+) else (
+    echo Marquage de ce device comme environnement de PRODUCTION...
+    adb shell touch /system/etc/carlauncher_prod
+    adb shell chmod 644 /system/etc/carlauncher_prod
+)
+
+echo.
 echo Redemarrage de l'appareil...
 adb reboot
 

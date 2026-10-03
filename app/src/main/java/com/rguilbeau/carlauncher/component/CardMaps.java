@@ -20,7 +20,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.rguilbeau.carlauncher.R;
-import com.rguilbeau.carlauncher.service.NotificationService;
+import com.rguilbeau.carlauncher.service.notification.NotificationService;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 
 /**
@@ -64,6 +64,9 @@ public class CardMaps extends FrameLayout implements View.OnClickListener {
      */
     private final BroadcastReceiver mapsReceiver = new BroadcastReceiver() {
 
+        /**
+         * Met à jour ou réinitialise l'affichage de navigation selon les données reçues du NotificationService.
+         */
         @Override
         public void onReceive(Context context, Intent intent) {
             if (NotificationService.ACTION_MAPS_UPDATE.equals(intent.getAction())) {

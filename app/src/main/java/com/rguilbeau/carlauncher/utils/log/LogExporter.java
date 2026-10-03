@@ -175,12 +175,18 @@ public class LogExporter {
                 .build();
 
         httpClient.newCall(request).enqueue(new Callback() {
+            /**
+             * Signale l'échec réseau de l'envoi du fichier compressé.
+             */
             @Override
             public void onFailure(Call call, IOException e) {
                 CarLog.e(TAG, "Upload request failed", e);
                 notifyError(callback, "Erreur réseau lors de l'envoi.");
             }
 
+            /**
+             * Analyse la réponse du service d'hébergement et génère le code QR en cas de succès.
+             */
             @Override
             public void onResponse(Call call, Response response) {
                 try {

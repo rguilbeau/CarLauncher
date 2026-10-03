@@ -7,11 +7,22 @@ import java.lang.reflect.Method;
 
 public class StatusBar {
 
+    /**
+     * Tag utilisé pour l'identification des messages de journalisation (logs) de cette classe.
+     */
     private static final String TAG = "StatusBar";
 
+    /**
+     * Constructeur privé pour empêcher l'instanciation de cette classe utilitaire.
+     */
     private StatusBar() {
     }
 
+    /**
+     * Désactive l'ouverture de la barre de statut d'origine du système (via une API interne réflexive).
+     *
+     * @param context Le contexte Android permettant d'accéder au service système "statusbar".
+     */
     public static void disableOriginalStatusBar(Context context) {
         try {
             @SuppressLint("WrongConstant")
@@ -29,6 +40,11 @@ public class StatusBar {
 
     }
 
+    /**
+     * Restaure le comportement d'origine de la barre de statut du système.
+     *
+     * @param context Le contexte Android permettant d'accéder au service système "statusbar".
+     */
     public static void enableOriginalStatusBar(Context context) {
         try {
             @SuppressLint("WrongConstant")

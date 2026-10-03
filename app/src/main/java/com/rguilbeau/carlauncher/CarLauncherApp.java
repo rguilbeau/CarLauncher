@@ -2,12 +2,10 @@ package com.rguilbeau.carlauncher;
 
 import android.app.Application;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.widget.TextView;
 
-import com.elvishew.xlog.XLog;
+import com.rguilbeau.carlauncher.repository.worker.WorkerManager;
+import com.rguilbeau.carlauncher.utils.prefskey.PerfsKeyMigration;
 import com.rguilbeau.carlauncher.utils.log.CarLog;
 import com.rguilbeau.carlauncher.utils.log.StatusBar;
 
@@ -32,6 +30,11 @@ public class CarLauncherApp extends Application {
     public void onCreate() {
         super.onCreate();
         CarLog.init(this);
+
+        // Doit s'exécuter avant tout accès aux préférences par un composant de l'application.
+        PerfsKeyMigration.migrate(this);
+
+        WorkerManager.init(this);
 
         // Capture automatique des erreurs non interceptées
         Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();

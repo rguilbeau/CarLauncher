@@ -4,5 +4,6 @@
         <permission name="android.permission.INSTALL_PACKAGES"/>
         <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
         <permission name="android.permission.STATUS_BAR" />
+        <permission name="android.permission.MANAGE_USB" />
     </privapp-permissions>
 </permissions>

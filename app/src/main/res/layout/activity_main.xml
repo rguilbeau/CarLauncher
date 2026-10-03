@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
+    android:background="#000000">
+
+    <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:orientation="horizontal"
     android:paddingStart="@dimen/_20sdp"
     android:paddingTop="@dimen/_45sdp"
@@ -129,4 +133,18 @@
         </LinearLayout>
 
     </LinearLayout>
-</LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/txtDevBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="@dimen/_4sdp"
+        android:text="Environnement: DEV"
+        android:textColor="#FF0000"
+        android:textStyle="bold"
+        android:textSize="@dimen/_9sdp"
+        android:visibility="gone" />
+
+</FrameLayout>

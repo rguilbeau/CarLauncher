@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.provider.Settings;
 
 
@@ -22,7 +23,7 @@ import com.rguilbeau.carlauncher.utils.log.CarLog;
  *     <li>Vérifier l'état des permissions d'exécution (Runtime Permissions) comme le GPS.</li>
  *     <li>Déclencher les requêtes de permissions auprès du système.</li>
  *     <li>Traiter les résultats des requêtes via un système de Callback.</li>
- *     <li>Vérifier et rediriger l'utilisateur vers les paramètres spéciaux (Notifications).</li>
+ *     <li>Vérifier et rediriger l'utilisateur vers les paramètres spéciaux (Notifications, affichage par-dessus les autres applications).</li>
  * </ul>
  * </p>
  *
@@ -146,6 +147,42 @@ public class PermissionManager {
             context.startActivity(intent);
         } catch (Exception e) {
             CarLog.e(TAG, "Failed to open Notification Listener settings", e);
+        }
+    }
+
+    /**
+     * Vérifie si l'application est autorisée à s'afficher par-dessus les autres applications.
+     * Cette permission spéciale est requise pour les popups d'information du véhicule (PopupService).
+     *
+     * @param context Le contexte de l'application ou de l'activité.
+     * @return true si l'autorisation est accordée, false sinon.
+     */
+    public static boolean hasOverlayPermission(Context context) {
+        if (context == null) {
+            return false;
+        }
+
+        return Settings.canDrawOverlays(context);
+    }
+
+    /**
+     * Redirige l'utilisateur vers la page des paramètres Android permettant d'autoriser
+     * l'affichage par-dessus les autres applications.
+     *
+     * @param context Le contexte utilisé pour lancer l'intention (Intent).
+     */
+    public static void openOverlaySettings(Context context) {
+        if (context == null) {
+            return;
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + context.getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Exception e) {
+            CarLog.e(TAG, "Failed to open overlay permission settings", e);
         }
     }
 }

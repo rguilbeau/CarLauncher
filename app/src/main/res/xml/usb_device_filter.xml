@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptateurs USB que MainActivity déclare prendre en charge (ACTION_USB_DEVICE_ATTACHED) :
+     permet à Android de mémoriser la permission USB (case « Toujours ouvrir ») au lieu de la
+     redemander à chaque branchement/redémarrage. -->
+<resources>
+    <!-- CANable (firmware slcan) : VID 0xAD50, PID 0x60C4 -->
+    <usb-device vendor-id="44368" product-id="24772" />
+</resources>

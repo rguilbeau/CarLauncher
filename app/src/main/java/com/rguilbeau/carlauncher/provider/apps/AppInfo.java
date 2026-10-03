@@ -12,8 +12,19 @@ import androidx.annotation.NonNull;
  */
 public class AppInfo implements Comparable<AppInfo> {
 
+    /**
+     * Nom d'affichage de l'application (ex: "Google Maps").
+     */
     public final String name;
+
+    /**
+     * Nom de paquet unique identifiant l'application (ex: "com.google.android.apps.maps").
+     */
     public final String packageName;
+
+    /**
+     * Icône de l'application à afficher dans la grille du tiroir d'applications.
+     */
     public final Drawable icon;
 
     /**

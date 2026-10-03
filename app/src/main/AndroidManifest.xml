@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.rguilbeau.carlauncher">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Permet à WorkManager de replanifier la file de requêtes persistante après un redémarrage -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Affichage des messages d'information du véhicule par-dessus les autres applications (PopupService) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Permission privilégiée (priv-app) -->
     <!-- Rappels importants pour le déploiement :
@@ -23,6 +26,11 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.STATUS_BAR" tools:ignore="ProtectedPermissions" />
+    <!-- Octroi silencieux de la permission USB à l'adaptateur CANable (UsbManager.grantPermission) -->
+    <uses-permission android:name="android.permission.MANAGE_USB" tools:ignore="ProtectedPermissions" />
+
+    <!-- Adaptateur CANable branché en USB (lecture du bus CAN du véhicule) -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:name=".CarLauncherApp"
@@ -51,6 +59,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Branchement de l'adaptateur CANable : déclarer le périphérique permet à Android
+                 de mémoriser définitivement la permission USB (case « Toujours ouvrir ») -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+
         </activity>
 
         <!-- Activité affichant le tiroir d'applications (grille de toutes les applications installées) -->
@@ -63,7 +80,7 @@
 
         <!-- Service d'écoute des notifications système : intercepte les contrôles média (Spotify, etc.) et les données Google Maps -->
         <service
-            android:name=".service.NotificationService"
+            android:name=".service.notification.NotificationService"
             android:exported="true"
             android:label="Car Launcher Media"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -74,13 +91,31 @@
 
         <!-- Service d'arrière-plan enregistrant les statistiques de trajet (distance, durée) -->
         <service
-            android:name=".service.TripService"
+            android:name=".service.trip.TripService"
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Service d'arrière-plan communiquant avec le bus CAN du véhicule pour la vitesse, les RPM et le contact (ACC) -->
+        <!-- Service d'arrière-plan persistant les statistiques de trajet en base de données (Neon/Postgres) -->
         <service
-            android:name=".service.telemetry.CarTelemetryService"
+            android:name=".service.trip.persistence.TripPersistenceService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Service d'arrière-plan lisant le bus CAN du véhicule via un adaptateur Canable (vitesse, RPM, contact, kilométrage) -->
+        <service
+            android:name=".service.telemetry.TelemetryService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Service d'arrière-plan enregistrant la dernière position du véhicule lorsqu'il se gare -->
+        <service
+            android:name=".service.park.ParkService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Service d'arrière-plan affichant en overlay les messages d'information du véhicule (trame CAN 1A1) -->
+        <service
+            android:name=".service.popup.PopupService"
             android:enabled="true"
             android:exported="false" />
 
